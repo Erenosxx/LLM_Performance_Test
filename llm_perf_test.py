@@ -47,12 +47,14 @@ try:
 except ImportError:
     sys.exit("HATA: 'requests' kurulu değil ->  pip install requests")
 
+from agentic import AGENTIC_TASKS, agentic_loop
+
 
 # ===========================================================================
 #  SORULAR
 # ===========================================================================
 
-CATEGORIES = ["Yaratıcılık", "Kod", "SQL", "Matematik", "Hata Ayıklama"]
+CATEGORIES = ["Yaratıcılık", "Kod", "SQL", "Matematik", "Hata Ayıklama", "Agentic"]
 
 # --- Yaratıcılık (1) ---
 CREATIVE_PROMPT = (
@@ -515,6 +517,14 @@ def build_questions():
                   "grader": ("code", {"func": dq["func"], "tests": dq["tests"],
                                       "cozum": CODE_SOLUTIONS.get(dq["func"], "")}),
                   "kriter": f"{len(dq['tests'])} test ile düzeltme doğrulanır."})
+    # Agentic branşı (çok-turlu araç kullanımı; loop run_questions'ta sürülür)
+    for t in AGENTIC_TASKS:
+        gtype = t["grader_type"]  # "math" -> sayı, "metin" -> isim eşleşmesi
+        spec = {"expected": t["expected"], "cozum": t["cozum"]}
+        q.append({"key": t["key"], "kategori": "Agentic", "seviye": t["seviye"],
+                  "baslik": t["baslik"], "prompt": t["user"], "agentic": t,
+                  "grader": (gtype, spec),
+                  "kriter": "Araçlarla veri toplayıp doğru çıkarımı yapan model geçer."})
     return q
 
 
@@ -657,6 +667,25 @@ def grade_math(answer, expected, tol=0.5):
     return ok, msg, info
 
 
+def _norm_metin(s):
+    return re.sub(r"[^a-z0-9çğıöşü]", "", str(s).lower())
+
+
+def grade_text(answer, expected):
+    """Metin cevabı: `#### <cevap>` işaretinden ya da son satırdan al, normalize edip kıyasla."""
+    marks = re.findall(r"####\s*(.+)", answer)
+    if marks:
+        cand = marks[-1].strip()
+    else:
+        satirlar = [s for s in answer.strip().splitlines() if s.strip()]
+        cand = satirlar[-1].strip() if satirlar else ""
+    e = _norm_metin(expected)
+    c = _norm_metin(cand)
+    ok = bool(e) and (c == e or e in c)
+    info = {"type": "metin", "expected": expected, "got": cand[:80]}
+    return ok, f"Beklenen '{expected}', bulunan '{cand[:60]}' → {'doğru' if ok else 'yanlış'}", info
+
+
 def grade_answer(question, text):
     """Bir sorunun cevabını değerlendirir -> (passed|None, detay, output_info)."""
     g = question["grader"]
@@ -674,6 +703,8 @@ def grade_answer(question, text):
             return grade_sql(text, spec["ref"])
         if gtype == "math":
             return grade_math(text, spec["expected"])
+        if gtype == "metin":
+            return grade_text(text, spec["expected"])
     except Exception as e:
         return False, f"Değerlendirici hatası: {e}", None
     return None, "", None
@@ -703,6 +734,8 @@ def correct_answer_text(question):
         return "Referans sorgu:\n" + spec["ref"] + "\n\nBeklenen sonuç:\n" + rowtxt
     if gtype == "math":
         return f"Doğru sonuç: {spec['expected']:g}\nÇözüm: {spec.get('cozum', '')}"
+    if gtype == "metin":
+        return f"Doğru cevap: {spec['expected']}\nÇözüm: {spec.get('cozum', '')}"
     return ""
 
 
@@ -1116,6 +1149,10 @@ def build_pdf(out_path, model_info, gpu_summary, results, run_meta):
             el.append(Paragraph(_para(r["prompt"]), S["CODE"]))
             el.append(Paragraph(f"TTFT {r['ttft']:.2f}s · toplam {r['total']:.2f}s · "
                                 f"{r['tokens_per_sec']:.1f} tok/s · {r['completion_tokens']} token", S["SMALL"]))
+            if r.get("agentic_info"):
+                ai = r["agentic_info"]
+                el.append(Paragraph(f"<b>Agentic:</b> {ai['turns']} tur · {ai['tool_calls']} araç çağrısı · "
+                                    f"önce-oku: {'evet' if ai['read_before'] else 'hayır'}", S["SMALL"]))
             if r["passed"] is not None and r["grade_detail"]:
                 el.append(Paragraph(_para(r["grade_detail"]), S["SMALL"]))
             elif r["passed"] is None:
@@ -1186,6 +1223,24 @@ def run_questions(base_url, model_id, args, max_tokens, gpu=None, log=print):
     results = []
     for q in QUESTIONS:
         log(f"   -> {q['baslik']}")
+        if q.get("agentic"):
+            # Çok-turlu araç döngüsü (model araç çağırır, biz çalıştırıp geri besleriz)
+            try:
+                ar = agentic_loop(base_url, model_id, q["agentic"], args.temperature, max_tokens,
+                                  no_think=no_think)
+            except Exception as e:
+                ar = {"text": f"[İSTEK HATASI: {e}]", "turns": 0, "tool_calls": 0,
+                      "read_before_answer": False, "transcript": [], "total": 0, "ttft": 0,
+                      "completion_tokens": 0, "tokens_per_sec": 0}
+            passed, detail, outinfo = grade_answer(q, ar["text"])
+            disp = ar["text"] or "[boş]"
+            results.append({**q, "text": disp, "ttft": ar["ttft"], "total": ar["total"],
+                            "completion_tokens": ar["completion_tokens"],
+                            "tokens_per_sec": ar["tokens_per_sec"], "passed": passed,
+                            "grade_detail": detail, "grade_output": outinfo,
+                            "agentic_info": {"turns": ar["turns"], "tool_calls": ar["tool_calls"],
+                                             "read_before": ar["read_before_answer"]}})
+            continue
         try:
             resp = ask_llm(base_url, model_id, q["prompt"], args.temperature, max_tokens,
                            no_think=no_think)
@@ -1242,6 +1297,8 @@ def reference_answer(q):
         return "```sql\n" + spec["ref"] + ";\n```"
     if gtype == "math":
         return f"... hesap ...\n#### {spec['expected']:g}"
+    if gtype == "metin":
+        return f"... çıkarım ...\n#### {spec['expected']}"
     return ""
 
 

@@ -16,7 +16,8 @@ pip install -r requirements.txt
 | Kod / algoritma | 8 yazma + 3 okuma (çıktı tahmini) | Evet — fonksiyon çalıştırılıp test edilir / çıktı sayısı kıyas |
 | SQL | 8 (kolay→çok zor) | Evet — SQLite'ta referans sorgu ile kıyas |
 | Matematik | 8 (kolay→çok zor) | Evet — bilinen sonuçla kıyas |
-| **Hata Ayıklama** (yeni branş) | 9 (kolay→çok sinsi) | Evet — BOZUK kod verilir, düzeltilmiş kod çalıştırılıp test edilir |
+| **Hata Ayıklama** (branş) | 9 (kolay→çok sinsi) | Evet — BOZUK kod verilir, düzeltilmiş kod çalıştırılıp test edilir |
+| **Agentic** (branş) | 3 | Evet — çok-turlu ARAÇ kullanımı; model veriyi araçlarla toplayıp doğru çıkarımı yapmalı |
 
 **Yarışma seviyesi** (LeetCode/AIME/Spider2.0 esinli — güçlü modelleri ayırt etmek için), her kategori 8 soru, kolay→çok zor:
 - Kod: roman_sayi → editleme_mesafesi (Levenshtein) → kelime_bol (word break) → n_vezir (N-Queens) → en_uzun_artan_yol → **regex_eslesme (DP)** → **histogram_max_alan (stack)** → **kelime_merdiveni (BFS, word ladder)** — son 3'ü LeetCode **Hard**
@@ -25,7 +26,7 @@ pip install -r requirements.txt
 - **Hata Ayıklama** (agentic modelin "teşhis-düzelt-doğrula" gücünü ölçer): bozuk `en_buyuk`/`carpim`/`tekrar_eden_var_mi`/`ortalama`/`fib` verilir, model düzeltir, otomatik test edilir.
 - **Kod-Okuma** (read-before-act): bir kod parçasının çıktısını adım adım izleyip `#### <sayı>` ile verir.
 
-> İleride planlanan: gerçek **agentic araç-kullanım döngüsü** (model oku/düzenle/çalıştır araçlarını çağırır, çok turlu).
+- **Agentic** (`agentic.py` — çok-turlu araç kullanımı; modelin asıl gücünü ölçer): model araç çağırır → sandbox'ta çalıştırıp sonucu geri besleriz → çıkarım yapana kadar. 3 görev: tutarsız muhasebe kaydını bulma (8 kayıt, invariant), 5 ipucundan tek sayıyı çıkarma (462), en çok satan çalışanın yöneticisini bulma (çok-adımlı). Tool-calling yapamayan/yanlış çıkaran model 0 alır; tur limiti (25) ile asla takılmaz.
 
 ## Cevaplar nasıl "doğru/yanlış" diye değerlendiriliyor?
 - **KOD:** Modelin yazdığı fonksiyon koddan çıkarılır, ayrı bir Python sürecinde

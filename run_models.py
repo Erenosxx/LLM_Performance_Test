@@ -443,6 +443,10 @@ def build_combined_pdf(out_path, records, run_meta):
                 el.append(Paragraph(f"{html.escape(r['baslik'])} &nbsp; {_verdict_tag(r['passed'])} "
                                     f"&nbsp;<font size=7 color='#888888'>"
                                     f"({r['total']:.1f}s · {r['tokens_per_sec']:.0f} tok/s)</font>", S["H3"]))
+                if r.get("agentic_info"):
+                    ai = r["agentic_info"]
+                    el.append(Paragraph(f"<b>Agentic:</b> {ai['turns']} tur · {ai['tool_calls']} araç çağrısı "
+                                        f"· önce-oku: {'evet' if ai['read_before'] else 'hayır'}", S["SMALL"]))
                 if r["passed"] is not None and r["grade_detail"]:
                     el.append(Paragraph(_para(r["grade_detail"][:400]), S["SMALL"]))
                 txt = r["text"]
