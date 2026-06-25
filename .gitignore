@@ -1,0 +1,13 @@
+# Üretilen raporlar (çıktı, yeniden üretilebilir — kullanıcının sonuç klasörü)
+Model_raporları/
+
+# Geçici / çalışma dosyaları
+launch_1/
+logs/
+_selftest/
+__pycache__/
+*.pyc
+*.pyo
+
+# Örnek/geçici PDF'ler
+*.pdf
