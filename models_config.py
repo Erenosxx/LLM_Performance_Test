@@ -13,9 +13,10 @@ LLAMA_SERVER = "/home/han/Desktop/llama.cpp/build/bin/llama-server"
 PORT = 8080
 HOST = "127.0.0.1"
 
-DEFAULT_CTX = 32768       # 32k context (çift GPU'da KV cache'e bol yer var)
+DEFAULT_CTX = 32768       # 32k context
 DEFAULT_NGL = 99          # tüm katmanlar GPU'da (maksimum)
-# NOT: Eşit kıyas için TÜM modeller çift GPU'da (-sm layer, CUDA_VISIBLE_DEVICES=0,1) açılır.
+SINGLE_GPU_MAX_GB = 17.0  # bu boyuta kadar olan modeller TEK GPU'da açılır (daha hızlı; GPU'lar-arası
+                          # bölme/senkron yükü yok). Daha büyükler 2 GPU'ya bölünür (-sm layer).
 
 # Küçükten büyüğe sıralı (hızlı geri bildirim için). İstemediğin satırı yorumla.
 MODELS = [

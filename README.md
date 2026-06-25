@@ -60,7 +60,7 @@ PDF bu klasöre düşer: `rapor_<model>_<tarih>.pdf`.
 Sunucusuz grader+PDF denemesi: `python llm_perf_test.py --selftest`
 
 ## B) Seçili modelleri otomatik test etme (orkestratör)
-`run_models.py` her modeli **sırayla kendisi açar** (ÇİFT GPU), test eder, kapatır.
+`run_models.py` her modeli **sırayla kendisi açar**, test eder, kapatır.
 
 **HANGİ MODELLER? → SADECE `launch/` klasöründe `.sh` dosyası olanlar.**
 Bir modeli testten çıkarmak için onun `open_*.sh` dosyasını `launch/` dışına taşı
@@ -90,7 +90,7 @@ Model_raporları/
 Tek-model tester (`llm_perf_test.py`) de aynı yapıyı kullanır
 (`Model_raporları/calisma_<tarih-saat>/model_raporlari/`).
 
-- **Tüm modeller ÇİFT GPU** (`-sm layer`, `CUDA_VISIBLE_DEVICES=0,1`) açılır → eşit kıyas.
+- **GPU stratejisi (hız için):** ≤17 GB modeller **TEK GPU**'da açılır (bölme/senkron yükü yok → daha hızlı + GPU daha dolu); tek karta sığmayanlar **çift GPU**'ya bölünür (`-sm layer`). Tek GPU'da açılmazsa (32k KV ile sığmazsa) otomatik çift GPU'ya düşer.
 - Test edilecek modeller: **`launch/` içindeki `.sh` dosyaları** (seçim için bunları taşı).
   Tam model havuzu + yollar `models_config.py`'de tanımlı (launcher'lar buradan üretilir).
 - Bir model açılmazsa **durmaz**, hatayı `logs/<model>.log`'a yazıp sonrakine geçer

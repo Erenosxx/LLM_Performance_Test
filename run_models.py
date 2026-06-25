@@ -19,7 +19,7 @@ tüm soruları (1 yaratıcılık + 5 kod + 5 SQL + 5 matematik) uygular + GPU/VR
             model_raporlari/                 <- tekli model PDF'leri (alt klasör)
                 rapor_<model>_<tarih>.pdf
 
-Tüm modeller eşit kıyas için ÇİFT GPU (-sm layer, CUDA_VISIBLE_DEVICES=0,1) açılır.
+GPU stratejisi: ≤17 GB modeller TEK GPU'da (hızlı), tek karta sığmayanlar 2 GPU'ya bölünür.
 
 Kullanım:
     python run_models.py                       # launch/ içindeki modelleri test et
@@ -101,19 +101,31 @@ def read_gpu_mem():
 # Sunucu yönetimi (her model ÇİFT GPU)
 # ---------------------------------------------------------------------------
 
-def launch_server(cfg, log_path):
+def launch_server(cfg, log_path, force_dual=False):
     ctx = cfg.get("ctx", CFG.DEFAULT_CTX)
     ngl = cfg.get("ngl", CFG.DEFAULT_NGL)
-    cmd = [CFG.LLAMA_SERVER, "-m", model_path(cfg), "-c", str(ctx), "-ngl", str(ngl),
-           "-sm", "layer", "--host", CFG.HOST, "--port", str(CFG.PORT),
-           "-a", alias_of(cfg), "--jinja"]
+    try:
+        size_gb = os.path.getsize(model_path(cfg)) / 1e9
+    except OSError:
+        size_gb = 99.0
     env = dict(os.environ)
-    env["CUDA_VISIBLE_DEVICES"] = "0,1"     # eşit kıyas: tüm modeller iki 4090'da
+    cmd = [CFG.LLAMA_SERVER, "-m", model_path(cfg), "-c", str(ctx), "-ngl", str(ngl),
+           "--host", CFG.HOST, "--port", str(CFG.PORT), "-a", alias_of(cfg), "--jinja"]
+    if size_gb <= CFG.SINGLE_GPU_MAX_GB and not force_dual:
+        # Tek GPU'ya sığıyor: bölme/senkron yükü yok -> daha hızlı + GPU daha dolu
+        env["CUDA_VISIBLE_DEVICES"] = "0"
+        cmd += ["-sm", "none"]
+        gpu_mode = "tek GPU"
+    else:
+        # Tek karta sığmıyor: 2 GPU'ya böl
+        env["CUDA_VISIBLE_DEVICES"] = "0,1"
+        cmd += ["-sm", "layer"]
+        gpu_mode = "çift GPU"
     logf = open(log_path, "w")
-    logf.write("CMD: " + " ".join(cmd) + "\nCUDA_VISIBLE_DEVICES=0,1\n\n")
+    logf.write("CMD: " + " ".join(cmd) + f"\nCUDA_VISIBLE_DEVICES={env['CUDA_VISIBLE_DEVICES']}\n\n")
     logf.flush()
     proc = subprocess.Popen(cmd, env=env, stdout=logf, stderr=subprocess.STDOUT)
-    return proc, logf, ctx
+    return proc, logf, ctx, gpu_mode
 
 
 def wait_health(proc, timeout=300):
@@ -165,14 +177,26 @@ def test_one_model(cfg, args):
     os.makedirs(LOG_DIR, exist_ok=True)
     log_path = os.path.join(LOG_DIR, f"{safe_name(name_guess)}.log")
     baseline = read_gpu_mem()
-    print(f"   açılıyor (çift GPU) ...")
-    proc, logf, ctx = launch_server(cfg, log_path)
+    proc, logf, ctx, gpu_mode = launch_server(cfg, log_path)
+    print(f"   açılıyor ({gpu_mode}) ...")
     if not wait_health(proc, timeout=args.load_timeout):
         stop_server(proc, logf)
         wait_vram_free(baseline)
-        rec["error"] = f"Sunucu hazır olmadı (log: {log_path})"
-        print(f"      ✘ AÇILMADI -> atlanıyor.")
-        return rec
+        if gpu_mode == "tek GPU":
+            # Tek GPU'ya sığmamış olabilir (32k KV ile) -> çift GPU'ya düş
+            print("      tek GPU'da açılmadı, çift GPU ile tekrar deneniyor...")
+            proc, logf, ctx, gpu_mode = launch_server(cfg, log_path, force_dual=True)
+            print(f"   açılıyor ({gpu_mode}) ...")
+            if not wait_health(proc, timeout=args.load_timeout):
+                stop_server(proc, logf)
+                wait_vram_free(baseline)
+                rec["error"] = f"Sunucu hazır olmadı (log: {log_path})"
+                print(f"      ✘ AÇILMADI -> atlanıyor.")
+                return rec
+        else:
+            rec["error"] = f"Sunucu hazır olmadı (log: {log_path})"
+            print(f"      ✘ AÇILMADI -> atlanıyor.")
+            return rec
 
     try:
         info = detect_model(BASE_URL)
@@ -468,14 +492,22 @@ def gen_launchers():
     for cfg in CFG.MODELS:
         ctx = cfg.get("ctx", CFG.DEFAULT_CTX)
         ngl = cfg.get("ngl", CFG.DEFAULT_NGL)
+        try:
+            size_gb = os.path.getsize(model_path(cfg)) / 1e9
+        except OSError:
+            size_gb = 99.0
+        if size_gb <= CFG.SINGLE_GPU_MAX_GB:
+            cvd, sm, mode = "0", "none", "tek GPU"
+        else:
+            cvd, sm, mode = "0,1", "layer", "çift GPU"
         sh = os.path.join(LAUNCH_DIR, "open_" + safe_name(alias_of(cfg)) + ".sh")
         content = f"""#!/usr/bin/env bash
-# {cfg['file']}  (çift GPU)  -> http://{CFG.HOST}:{CFG.PORT}
+# {cfg['file']}  ({mode})  -> http://{CFG.HOST}:{CFG.PORT}
 set -e
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES={cvd}
 "{CFG.LLAMA_SERVER}" \\
   -m "{model_path(cfg)}" \\
-  -c {ctx} -ngl {ngl} -sm layer \\
+  -c {ctx} -ngl {ngl} -sm {sm} \\
   --host {CFG.HOST} --port {CFG.PORT} \\
   -a {alias_of(cfg)} --jinja
 """
