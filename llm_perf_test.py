@@ -890,11 +890,12 @@ class GpuMonitor:
 #  LLM İSTEMCİSİ
 # ===========================================================================
 
-def ask_llm(base_url, model_id, prompt, temperature, max_tokens, timeout=600, no_think=False):
+def ask_llm(base_url, model_id, prompt, temperature, max_tokens, timeout=600, no_think=False,
+            repeat_penalty=1.1):
     url = base_url + "/v1/chat/completions"
     payload = {"model": model_id, "messages": [{"role": "user", "content": prompt}],
                "temperature": temperature, "max_tokens": max_tokens, "stream": True,
-               "stream_options": {"include_usage": True}}
+               "repeat_penalty": repeat_penalty, "stream_options": {"include_usage": True}}
     if no_think:
         # Düşünmeyi (reasoning) destekleyen jinja şablonları için
         payload["chat_template_kwargs"] = {"enable_thinking": False}
@@ -1220,6 +1221,7 @@ def effective_max_tokens(args, n_ctx):
 def run_questions(base_url, model_id, args, max_tokens, gpu=None, log=print):
     """Tüm soruları sorar, değerlendirir; sonuç listesi döndürür. max_tokens: kullanılacak limit."""
     no_think = getattr(args, "no_think", False)
+    rep = getattr(args, "repeat_penalty", 1.1)
     results = []
     for q in QUESTIONS:
         log(f"   -> {q['baslik']}")
@@ -1227,7 +1229,7 @@ def run_questions(base_url, model_id, args, max_tokens, gpu=None, log=print):
             # Çok-turlu araç döngüsü (model araç çağırır, biz çalıştırıp geri besleriz)
             try:
                 ar = agentic_loop(base_url, model_id, q["agentic"], args.temperature, max_tokens,
-                                  no_think=no_think)
+                                  no_think=no_think, repeat_penalty=rep)
             except Exception as e:
                 ar = {"text": f"[İSTEK HATASI: {e}]", "turns": 0, "tool_calls": 0,
                       "read_before_answer": False, "transcript": [], "total": 0, "ttft": 0,
@@ -1243,7 +1245,7 @@ def run_questions(base_url, model_id, args, max_tokens, gpu=None, log=print):
             continue
         try:
             resp = ask_llm(base_url, model_id, q["prompt"], args.temperature, max_tokens,
-                           no_think=no_think)
+                           no_think=no_think, repeat_penalty=rep)
         except Exception as e:
             resp = {"text": f"[İSTEK HATASI: {e}]", "reasoning": "", "finish_reason": "error",
                     "ttft": 0, "total": 0, "completion_tokens": 0, "tokens_per_sec": 0}
@@ -1341,7 +1343,10 @@ def main():
     ap.add_argument("--out-dir",
                     default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "Model_raporları"),
                     help="Raporların üst klasörü (vars: ./Model_raporları)")
-    ap.add_argument("--temperature", type=float, default=0.3)
+    ap.add_argument("--temperature", type=float, default=0.0,
+                    help="0 = greedy (tekrarlanabilir/deterministik kıyas)")
+    ap.add_argument("--repeat-penalty", type=float, default=1.1,
+                    help="Tekrar cezası (0000 bozulmasını önler; model kartı önerisi 1.1)")
     ap.add_argument("--max-tokens", type=int, default=0,
                     help="Yanıt başına maksimum token. 0 = OTOMATİK: bağlamın izin verdiği maksimum (n_ctx - 2048)")
     ap.add_argument("--no-think", action="store_true",

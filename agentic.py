@@ -77,6 +77,44 @@ def _satis_getir(calisan_id):
     return {"calisan_id": int(calisan_id), "toplam_satis": _SATIS.get(int(calisan_id), 0)}
 
 
+# --- Görev 4: Kara kutu (gizli f(x), yalnız 1-6 sorgulanabilir; f(10)=191 çıkarılmalı) ---
+def _kara_kutu(x):
+    x = int(x)
+    if 1 <= x <= 6:
+        return {"x": x, "sonuc": 2 * x * x - x + 1}
+    return {"hata": "kara_kutu yalnızca 1 ≤ x ≤ 6 için çalışır; başka değer sorgulanamaz"}
+
+
+# --- Görev 5: Mantık bulmacası (4 kişi × şehir × meslek; avukatın şehri = Bursa) ---
+_IPUC_LOGIC = {
+    1: "Ali İstanbul'da yaşıyor.",
+    2: "Doktor olan kişi İstanbul'da yaşıyor.",
+    3: "Veli mühendistir.",
+    4: "Öğretmen olan kişi İzmir'de yaşıyor.",
+    5: "Can ne İzmir'de ne de Ankara'da yaşıyor.",
+}
+
+
+def _ipucu_oku_logic(n):
+    return _IPUC_LOGIC.get(int(n), "böyle bir ipucu yok (1-5 arası dene)")
+
+
+# --- Görev 6: Graf en kısa yol (A->F en düşük maliyet = 13) ---
+_GRAF = {
+    "A": {"B": 4, "C": 2},
+    "B": {"A": 4, "C": 1, "D": 5},
+    "C": {"A": 2, "B": 1, "D": 8, "E": 10},
+    "D": {"B": 5, "C": 8, "E": 2, "F": 6},
+    "E": {"C": 10, "D": 2, "F": 3},
+    "F": {"D": 6, "E": 3},
+}
+
+
+def _komsular(dugum):
+    d = str(dugum).strip().upper()
+    return _GRAF.get(d, {"hata": "böyle bir düğüm yok (A-F arası dene)"})
+
+
 def _tool(name, desc, props, required=()):
     return {"type": "function", "function": {
         "name": name, "description": desc,
@@ -120,6 +158,42 @@ AGENTIC_TASKS = [
                      {"calisan_id": {"type": "integer"}}, ["calisan_id"])],
      "impls": {"calisan_listele": _calisan_listele, "calisan_oku": _calisan_oku,
                "satis_getir": _satis_getir}},
+
+    {"key": "agentic_4", "seviye": 4, "baslik": "Agentic S4 (kara kutu — tümevarım)",
+     "grader_type": "math", "expected": 191.0,
+     "cozum": "kara_kutu değerleri: 1→2,2→7,3→16,4→29,5→46,6→67. İkinci farklar sabit (4) → f(x)=2x²−x+1. "
+              "f(10)=200−10+1=191.",
+     "user": "kara_kutu(x) aracı gizli bir f(x) kuralını hesaplar AMA yalnızca 1 ≤ x ≤ 6 için çalışır "
+             "(başka değer hata verir). Birkaç değeri sorgulayarak f(x) kuralını ÇIKAR, sonra f(10) "
+             "değerini KENDİN hesapla (10'u kara_kutu'ya soramazsın). Sonucu EN SON satırda tam olarak "
+             "`#### <sayı>` biçiminde ver.",
+     "tools": [_tool("kara_kutu", "Gizli f(x) fonksiyonunu hesaplar; yalnızca 1 ≤ x ≤ 6 için geçerli.",
+                     {"x": {"type": "integer", "description": "sorgulanacak değer (1-6)"}}, ["x"])],
+     "impls": {"kara_kutu": _kara_kutu}},
+
+    {"key": "agentic_5", "seviye": 5, "baslik": "Agentic S5 (mantık bulmacası — tümdengelim)",
+     "grader_type": "metin", "expected": "Bursa",
+     "cozum": "Ali=İstanbul=Doktor; Öğretmen=İzmir; Can∉{İzmir,Ankara}→Can=Bursa; Veli=Mühendis=Ankara; "
+              "Ayşe=İzmir=Öğretmen; geriye Can=Avukat kalır → Avukat Bursa'da.",
+     "user": "4 kişi var: Ali, Veli, Ayşe, Can. Her birinin BİR şehri (İstanbul, Ankara, İzmir, Bursa) ve "
+             "BİR mesleği (Doktor, Mühendis, Öğretmen, Avukat) var; her şehir ve her meslek tam olarak bir "
+             "kişiye aittir. ipucu_oku(n) (n=1..5) ile TÜM ipuçlarını oku ve eşleştirmeyi mantıkla çöz. "
+             "Sonra şunu yanıtla: AVUKAT olan kişi hangi ŞEHİRDE yaşıyor? Cevabı (şehir adı) EN SON satırda "
+             "`#### <şehir>` biçiminde ver.",
+     "tools": [_tool("ipucu_oku", "n numaralı ipucunu (metin) döndürür (n: 1-5).",
+                     {"n": {"type": "integer"}}, ["n"])],
+     "impls": {"ipucu_oku": _ipucu_oku_logic}},
+
+    {"key": "agentic_6", "seviye": 6, "baslik": "Agentic S6 (graf en kısa yol — arama)",
+     "grader_type": "math", "expected": 13.0,
+     "cozum": "Dijkstra: A→C(2)→B(1)→D(5)→E(2)→F(3) = 13. (A-C-B-D-F=14, A-C-D-E-F=15'ten düşük.)",
+     "user": "Bir yol ağında A'dan F'ye düğümler var. komsular(dugum) aracı, verilen düğümün komşularını "
+             "ve her kenarın maliyetini döndürür (kenarlar çift yönlüdür). Grafı keşfederek A'dan F'ye "
+             "EN DÜŞÜK toplam maliyetli yolu bul ve o yolun TOPLAM MALİYETİNİ EN SON satırda "
+             "`#### <sayı>` biçiminde ver.",
+     "tools": [_tool("komsular", "Bir düğümün komşularını {komsu: maliyet} olarak döndürür.",
+                     {"dugum": {"type": "string", "description": "düğüm adı, örn. 'A'"}}, ["dugum"])],
+     "impls": {"komsular": _komsular}},
 ]
 
 
@@ -128,7 +202,7 @@ AGENTIC_TASKS = [
 # ===========================================================================
 
 def agentic_loop(base_url, model_id, task, temperature, max_tokens,
-                 no_think=False, max_turns=25, timeout=300):
+                 no_think=False, max_turns=25, timeout=300, repeat_penalty=1.1):
     """Modeli araçlarla çok-turlu çalıştırır. Dayanıklı: hata/araçsızlık/limit -> durmaz.
     Döndürür: text (nihai cevap), turns, tool_calls, read_before_answer, total, completion_tokens, ttft."""
     url = base_url + "/v1/chat/completions"
@@ -143,7 +217,8 @@ def agentic_loop(base_url, model_id, task, temperature, max_tokens,
     turn = 0
     for turn in range(1, max_turns + 1):
         payload = {"model": model_id, "messages": messages, "tools": task["tools"],
-                   "temperature": temperature, "max_tokens": max_tokens}
+                   "temperature": temperature, "max_tokens": max_tokens,
+                   "repeat_penalty": repeat_penalty}
         if no_think:
             payload["chat_template_kwargs"] = {"enable_thinking": False}
         try:

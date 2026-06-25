@@ -545,7 +545,10 @@ def main():
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--out-dir", default=OUTPUT_BASE,
                     help="Raporların üst klasörü (vars: ./Model_raporları)")
-    ap.add_argument("--temperature", type=float, default=0.3)
+    ap.add_argument("--temperature", type=float, default=0.0,
+                    help="0 = greedy (tekrarlanabilir/deterministik kıyas)")
+    ap.add_argument("--repeat-penalty", type=float, default=1.1,
+                    help="Tekrar cezası (0000 bozulmasını önler; model kartı önerisi 1.1)")
     ap.add_argument("--max-tokens", type=int, default=0,
                     help="Yanıt başına maksimum token. 0 = OTOMATİK: bağlamın izin verdiği maksimum (n_ctx - 2048)")
     ap.add_argument("--no-think", action="store_true",

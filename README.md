@@ -17,7 +17,9 @@ pip install -r requirements.txt
 | SQL | 8 (kolay→çok zor) | Evet — SQLite'ta referans sorgu ile kıyas |
 | Matematik | 8 (kolay→çok zor) | Evet — bilinen sonuçla kıyas |
 | **Hata Ayıklama** (branş) | 9 (kolay→çok sinsi) | Evet — BOZUK kod verilir, düzeltilmiş kod çalıştırılıp test edilir |
-| **Agentic** (branş) | 3 | Evet — çok-turlu ARAÇ kullanımı; model veriyi araçlarla toplayıp doğru çıkarımı yapmalı |
+| **Agentic** (branş) | 6 (3 orta + 3 çok zor) | Evet — çok-turlu ARAÇ kullanımı; model veriyi toplayıp doğru çıkarımı yapmalı |
+
+> **Tekrarlanabilirlik:** Varsayılan `temperature=0` (greedy) + `repeat_penalty=1.1` → aynı model aynı soruda HEP aynı cevabı verir (adil/deterministik kıyas). Eskiden temp 0.3 olduğundan skorlar tur-tur değişiyordu.
 
 **Yarışma seviyesi** (LeetCode/AIME/Spider2.0 esinli — güçlü modelleri ayırt etmek için), her kategori 8 soru, kolay→çok zor:
 - Kod: roman_sayi → editleme_mesafesi (Levenshtein) → kelime_bol (word break) → n_vezir (N-Queens) → en_uzun_artan_yol → **regex_eslesme (DP)** → **histogram_max_alan (stack)** → **kelime_merdiveni (BFS, word ladder)** — son 3'ü LeetCode **Hard**
@@ -26,7 +28,10 @@ pip install -r requirements.txt
 - **Hata Ayıklama** (agentic modelin "teşhis-düzelt-doğrula" gücünü ölçer): bozuk `en_buyuk`/`carpim`/`tekrar_eden_var_mi`/`ortalama`/`fib` verilir, model düzeltir, otomatik test edilir.
 - **Kod-Okuma** (read-before-act): bir kod parçasının çıktısını adım adım izleyip `#### <sayı>` ile verir.
 
-- **Agentic** (`agentic.py` — çok-turlu araç kullanımı; modelin asıl gücünü ölçer): model araç çağırır → sandbox'ta çalıştırıp sonucu geri besleriz → çıkarım yapana kadar. 3 görev: tutarsız muhasebe kaydını bulma (8 kayıt, invariant), 5 ipucundan tek sayıyı çıkarma (462), en çok satan çalışanın yöneticisini bulma (çok-adımlı). Tool-calling yapamayan/yanlış çıkaran model 0 alır; tur limiti (25) ile asla takılmaz.
+- **Agentic** (`agentic.py` — çok-turlu araç kullanımı; modelin asıl gücünü ölçer): model araç çağırır → sandbox'ta çalıştırıp sonucu geri besleriz → çıkarım yapana kadar (tur limiti 25). 6 görev:
+  - Orta: tutarsız muhasebe kaydı (invariant), 5 ipucu kesişimi (→462), çok-kaynaklı çıkarım (en çok satan→yöneticisi)
+  - **Çok zor (ayırt edici):** kara kutu — gizli f(x)'i 1-6 deneyip kuralı çıkar, f(10) hesapla (tümevarım); mantık bulmacası — zebra-tarzı 4×şehir×meslek (tümdengelim); graf en kısa yol — A→F Dijkstra (algoritmik arama)
+  - Tool-calling yapamayan/yanlış çıkaran model 0 alır. (Test: agentic-v2 kara-kutu+mantık'ı geçti, graf aramada optimali kaçırıp kaldı.)
 
 ## Cevaplar nasıl "doğru/yanlış" diye değerlendiriliyor?
 - **KOD:** Modelin yazdığı fonksiyon koddan çıkarılır, ayrı bir Python sürecinde
