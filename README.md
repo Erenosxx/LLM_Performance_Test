@@ -18,6 +18,7 @@ pip install -r requirements.txt
 | Matematik | 8 (kolay→çok zor) | Evet — bilinen sonuçla kıyas |
 | **Hata Ayıklama** (branş) | 9 (kolay→çok sinsi) | Evet — BOZUK kod verilir, düzeltilmiş kod çalıştırılıp test edilir |
 | **Agentic** (branş) | 6 (3 orta + 3 çok zor) | Evet — çok-turlu ARAÇ kullanımı; model veriyi toplayıp doğru çıkarımı yapmalı |
+| **Medikal** (branş) | 8 | Evet — cerrahi aşama/ekipman; gerekli tıbbi terim(ler) eş anlamlılarıyla aranır |
 
 > **Tekrarlanabilirlik:** Varsayılan `temperature=0` (greedy) + `repeat_penalty=1.1` → aynı model aynı soruda HEP aynı cevabı verir (adil/deterministik kıyas). Eskiden temp 0.3 olduğundan skorlar tur-tur değişiyordu.
 
