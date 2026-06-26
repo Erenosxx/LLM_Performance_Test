@@ -54,7 +54,7 @@ from agentic import AGENTIC_TASKS, agentic_loop
 #  SORULAR
 # ===========================================================================
 
-CATEGORIES = ["Yaratıcılık", "Kod", "SQL", "Matematik", "Hata Ayıklama", "Agentic"]
+CATEGORIES = ["Yaratıcılık", "Kod", "SQL", "Matematik", "Hata Ayıklama", "Agentic", "Medikal"]
 
 # --- Yaratıcılık (1) ---
 CREATIVE_PROMPT = (
@@ -475,6 +475,61 @@ DEBUG_QUESTIONS = [
 ]
 
 
+# --- Medikal (cerrahi aşamalar + ekipman): kesin-terim cevap, eş anlamlılarla puanlanır ---
+MEDICAL_SUFFIX = "\nCevabı EN SON satırda kısa ve net olarak `#### <terim>` biçiminde ver."
+MEDICAL_QUESTIONS = [
+    {"seviye": 1,
+     "prompt": "Laparoskopik cerrahide karın boşluğunu şişirmek (pnömoperitoneum oluşturmak) için en "
+               "yaygın kullanılan gaz hangisidir?",
+     "gereken": [["karbondioksit", "karbon dioksit", "co2", "co₂", "karbondioksid"]],
+     "cozum": "Karbondioksit (CO₂) — ucuz, yanıcı değil, kanda hızlı çözünür."},
+    {"seviye": 2,
+     "prompt": "Laparoskopik cerrahide karın duvarından ilk güvenli girişi sağlayıp gaz vermek için "
+               "kullanılan özel iğnenin adı nedir?",
+     "gereken": [["veress", "veres"]],
+     "cozum": "Veress iğnesi — kapalı teknikte ilk insüflasyon girişini sağlar."},
+    {"seviye": 3,
+     "prompt": "Laparoskopik kolesistektomide Calot (hepatosistik) üçgeninde diseke edilip kliplenerek "
+               "kesilen İKİ anatomik yapı nedir?",
+     "gereken": [["sistik arter", "sistik atardamar", "cystic artery", "arteria cystica"],
+                 ["sistik kanal", "sistik duktus", "sistik kanalı", "cystic duct", "ductus cysticus"]],
+     "cozum": "Sistik arter ve sistik kanal — ikisi kliplenip kesilir."},
+    {"seviye": 4,
+     "prompt": "Laparoskopik kolesistektomide, 'iki ve yalnızca iki yapının safra kesesine girdiğinin' "
+               "gösterildiği, güvenli diseksiyon için ulaşılması gereken aşamanın adı nedir?",
+     "gereken": [["critical view of safety", "cvs", "güvenliğin kritik görünümü", "güvenlik kritik görünüm",
+                  "kritik güvenlik görünümü", "güvenli görünüm", "kritik güvenlik penceresi",
+                  "kritik vizyon", "kritik görüş", "kritik görünüm", "kritik güvenlik", "kritik emniyet",
+                  "güvenlik vizyonu", "kritik bakış"]],
+     "cozum": "Critical View of Safety (CVS) — Calot üçgeni temizlenir, kese tabanından ayrılır, "
+              "yalnızca 2 yapı görülür."},
+    {"seviye": 5,
+     "prompt": "Açık kalp cerrahisinde (CABG) kalp durdurulduğunda, kalp ve akciğerlerin işlevini "
+               "üstlenip kanı oksijenlendirerek vücutta dolaştıran cihazın adı nedir?",
+     "gereken": [["kalp akciğer makinesi", "kalp-akciğer makinesi", "kardiyopulmoner baypas",
+                  "kardiyopulmoner bypass", "cpb", "kalp akciğer pompası", "perfüzyon pompası",
+                  "ekstrakorporeal dolaşım"]],
+     "cozum": "Kalp-akciğer makinesi (kardiyopulmoner baypas, CPB) — perfüzyonist tarafından çalıştırılır."},
+    {"seviye": 6,
+     "prompt": "CABG'de kalbi geçici olarak durdurmak için koroner dolaşıma verilen, yüksek potasyum "
+               "içeren özel solüsyonun adı nedir?",
+     "gereken": [["kardiyopleji", "kardiyoplejik solüsyon", "cardioplegia", "kardiopleji", "kardiyoplejik"]],
+     "cozum": "Kardiyopleji solüsyonu — yüksek potasyumla kalbi diastolde durdurur."},
+    {"seviye": 7,
+     "prompt": "CABG'de en sık kullanılan ve uzun dönem açıklık (patency) oranı en yüksek olan ARTER "
+               "grefti hangisidir?",
+     "gereken": [["internal mammari", "internal mamari", "internal mamaryan", "internal mammarian",
+                  "internal torasik", "lima", "sol internal", "mammaria", "mamaria"]],
+     "cozum": "Sol internal mammarian/torasik arter (LIMA) — LAD'ye anastomozda en yüksek uzun dönem açıklık."},
+    {"seviye": 8,
+     "prompt": "Median sternotomi ile açılan göğüs kemiği (sternum), ameliyat sonunda genellikle hangi "
+               "malzemeyle kapatılır/yaklaştırılır?",
+     "gereken": [["sternal tel", "çelik tel", "sternal kablo", "sternal wire", "paslanmaz tel",
+                  "çelik kablo"]],
+     "cozum": "Sternal teller (paslanmaz çelik tel) ile sternum yaklaştırılıp kapatılır."},
+]
+
+
 def build_questions():
     """Tüm soruları tek bir düz listede üretir (kategori, seviye, prompt, grader)."""
     q = []
@@ -517,6 +572,12 @@ def build_questions():
                   "grader": ("code", {"func": dq["func"], "tests": dq["tests"],
                                       "cozum": CODE_SOLUTIONS.get(dq["func"], "")}),
                   "kriter": f"{len(dq['tests'])} test ile düzeltme doğrulanır."})
+    # Medikal branşı (cerrahi aşamalar + ekipman; kesin-terim cevap)
+    for md in MEDICAL_QUESTIONS:
+        q.append({"key": f"medikal_{md['seviye']}", "kategori": "Medikal", "seviye": md["seviye"],
+                  "baslik": f"Medikal S{md['seviye']}", "prompt": md["prompt"] + MEDICAL_SUFFIX,
+                  "grader": ("medikal", {"gereken": md["gereken"], "cozum": md["cozum"]}),
+                  "kriter": "Gerekli tıbbi terim(ler) cevapta geçmeli."})
     # Agentic branşı (çok-turlu araç kullanımı; loop run_questions'ta sürülür)
     for t in AGENTIC_TASKS:
         gtype = t["grader_type"]  # "math" -> sayı, "metin" -> isim eşleşmesi
@@ -686,6 +747,23 @@ def grade_text(answer, expected):
     return ok, f"Beklenen '{expected}', bulunan '{cand[:60]}' → {'doğru' if ok else 'yanlış'}", info
 
 
+def _norm_med(s):
+    s = str(s).lower().replace("₂", "2").replace("²", "2")
+    return re.sub(r"[^a-z0-9çğıöşü]", "", s)
+
+
+def grade_medikal(answer, gereken):
+    """gereken = [konsept1, konsept2, ...]; her konsept = kabul edilen varyant listesi.
+    Her konseptten en az bir varyant cevapta geçmeli (hepsi). `#### <terim>` varsa ondan, yoksa tüm cevaptan."""
+    marks = re.findall(r"####\s*(.+)", answer)
+    cand = marks[-1] if marks else answer
+    na = _norm_med(cand)
+    eksik = [konsept[0] for konsept in gereken if not any(_norm_med(v) in na for v in konsept)]
+    ok = not eksik
+    info = {"type": "medikal", "gereken": [k[0] for k in gereken], "got": cand.strip()[:90]}
+    return ok, ("Tüm gerekli terimler bulundu." if ok else f"Eksik: {eksik}"), info
+
+
 def grade_answer(question, text):
     """Bir sorunun cevabını değerlendirir -> (passed|None, detay, output_info)."""
     g = question["grader"]
@@ -705,6 +783,8 @@ def grade_answer(question, text):
             return grade_math(text, spec["expected"])
         if gtype == "metin":
             return grade_text(text, spec["expected"])
+        if gtype == "medikal":
+            return grade_medikal(text, spec["gereken"])
     except Exception as e:
         return False, f"Değerlendirici hatası: {e}", None
     return None, "", None
@@ -736,6 +816,9 @@ def correct_answer_text(question):
         return f"Doğru sonuç: {spec['expected']:g}\nÇözüm: {spec.get('cozum', '')}"
     if gtype == "metin":
         return f"Doğru cevap: {spec['expected']}\nÇözüm: {spec.get('cozum', '')}"
+    if gtype == "medikal":
+        terimler = " + ".join(k[0] for k in spec["gereken"])
+        return f"Doğru cevap (gerekli terim): {terimler}\nAçıklama: {spec.get('cozum', '')}"
     return ""
 
 
@@ -1301,6 +1384,8 @@ def reference_answer(q):
         return f"... hesap ...\n#### {spec['expected']:g}"
     if gtype == "metin":
         return f"... çıkarım ...\n#### {spec['expected']}"
+    if gtype == "medikal":
+        return "#### " + " ve ".join(k[0] for k in spec["gereken"])
     return ""
 
 
