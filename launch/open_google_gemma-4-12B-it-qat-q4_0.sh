@@ -4,6 +4,6 @@ set -e
 export CUDA_VISIBLE_DEVICES=0,1
 "/home/han/Desktop/llama.cpp/build/bin/llama-server" \
   -m "/media/han/nvmer0/LLM/models/google_gemma-4-12B-it-qat-q4_0.gguf" \
-  -c 32768 -ngl 99 -sm layer \
+  -c 32768 -ngl 99 -fa on -sm layer \
   --host 127.0.0.1 --port 8080 \
   -a google_gemma-4-12B-it-qat-q4_0 --jinja
