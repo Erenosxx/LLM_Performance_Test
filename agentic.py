@@ -13,6 +13,8 @@ import time
 
 import requests
 
+LANG = "tr"   # "tr" / "en" — llm_perf_test.use_language() tarafından ayarlanır
+
 
 # ===========================================================================
 #  GÖREV VERİLERİ + ARAÇLAR
@@ -49,8 +51,18 @@ _IPUCLARI = {
 }
 
 
+_IPUCLARI_EN = {
+    1: "The number you seek has 3 digits (100-999).",
+    2: "The number is exactly divisible by 7.",
+    3: "The sum of its digits is 12.",
+    4: "The hundreds digit is exactly 2 more than the units digit.",
+    5: "The tens (middle) digit equals the sum of the hundreds and units digits.",
+}
+
+
 def _ipucu_oku(n):
-    return _IPUCLARI.get(int(n), "böyle bir ipucu yok (1-5 arası dene)")
+    d = _IPUCLARI_EN if LANG == "en" else _IPUCLARI
+    return d.get(int(n), "no such clue (try 1-5)" if LANG == "en" else "böyle bir ipucu yok (1-5 arası dene)")
 
 
 # --- Görev 3: Çok kaynaklı çıkarım (en yüksek satış -> yöneticisinin adı = Veli) ---
@@ -95,8 +107,18 @@ _IPUC_LOGIC = {
 }
 
 
+_IPUC_LOGIC_EN = {
+    1: "Ali lives in Istanbul.",
+    2: "The doctor lives in Istanbul.",
+    3: "Veli is an engineer.",
+    4: "The teacher lives in Izmir.",
+    5: "Can lives neither in Izmir nor in Ankara.",
+}
+
+
 def _ipucu_oku_logic(n):
-    return _IPUC_LOGIC.get(int(n), "böyle bir ipucu yok (1-5 arası dene)")
+    d = _IPUC_LOGIC_EN if LANG == "en" else _IPUC_LOGIC
+    return d.get(int(n), "no such clue (try 1-5)" if LANG == "en" else "böyle bir ipucu yok (1-5 arası dene)")
 
 
 # --- Görev 6: Graf en kısa yol (A->F en düşük maliyet = 13) ---
@@ -196,6 +218,36 @@ AGENTIC_TASKS = [
      "impls": {"komsular": _komsular}},
 ]
 
+# İngilizce görev metinleri (LANG="en" iken kullanılır; araç adları/veri aynı kalır)
+_AGENTIC_USER_EN = {
+    "agentic_1": "An accounting ledger has 8 records. In every VALID record this rule holds: "
+                 "bakiye = onceki_bakiye + alacak - borc (balance = previous_balance + credit - debit). "
+                 "Exactly ONE record breaks this rule. First call kayit_listele to get the ids, then read "
+                 "each record ONCE with kayit_oku and check the rule. As soon as you find the record that "
+                 "breaks the rule, STOP and give its id on the LAST line exactly as `#### <id>`. Do not "
+                 "re-read the same record.",
+    "agentic_2": "You are looking for a secret number. There are 5 numbered clues; each gives one "
+                 "constraint. Read ALL clues with ipucu_oku and find the SINGLE number satisfying all of "
+                 "them by reasoning. Give the answer on the LAST line exactly as `#### <number>`.",
+    "agentic_3": "A company has employees, each with a total sales figure. Using the tools, first find the "
+                 "employee with the HIGHEST total sales, then find the NAME of that employee's MANAGER "
+                 "(yonetici_id). Give the manager's name on the LAST line exactly as `#### <name>`.",
+    "agentic_4": "The kara_kutu(x) tool computes a hidden function f(x) but works ONLY for 1 <= x <= 6 "
+                 "(other values error). Probe several values, DEDUCE the rule f(x), then compute f(10) "
+                 "YOURSELF (you cannot query 10). Give the result on the LAST line exactly as `#### <number>`.",
+    "agentic_5": "There are 4 people: Ali, Veli, Ayse, Can. Each has ONE city (Istanbul, Ankara, Izmir, "
+                 "Bursa) and ONE profession (Doktor=doctor, Muhendis=engineer, Ogretmen=teacher, "
+                 "Avukat=lawyer); each city and profession belongs to exactly one person. Read ALL clues "
+                 "with ipucu_oku (n=1..5) and solve the matching by logic. Then answer: in which CITY does "
+                 "the LAWYER (Avukat) live? Give the city name on the LAST line as `#### <city>`.",
+    "agentic_6": "There is a road network with nodes A through F. The komsular(dugum) tool returns a "
+                 "node's neighbors and the cost of each edge (edges are bidirectional). Explore the graph "
+                 "and find the LOWEST total-cost path from A to F, then give that TOTAL COST on the LAST "
+                 "line exactly as `#### <number>`.",
+}
+for _t in AGENTIC_TASKS:
+    _t["user_en"] = _AGENTIC_USER_EN.get(_t["key"], _t["user"])
+
 
 # ===========================================================================
 #  ÇOK-TURLU ARAÇ DÖNGÜSÜ
@@ -207,7 +259,8 @@ def agentic_loop(base_url, model_id, task, temperature, max_tokens,
     Döndürür: text (nihai cevap), turns, tool_calls, read_before_answer, total, completion_tokens, ttft."""
     url = base_url + "/v1/chat/completions"
     impls = task["impls"]
-    messages = [{"role": "user", "content": task["user"]}]
+    user = task.get("user_en", task["user"]) if LANG == "en" else task["user"]
+    messages = [{"role": "user", "content": user}]
     t0 = time.perf_counter()
     ttft = None
     tool_calls_count = 0

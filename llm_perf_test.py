@@ -56,6 +56,8 @@ from agentic import AGENTIC_TASKS, agentic_loop
 
 CATEGORIES = ["Yaratıcılık", "Kod", "SQL", "Matematik", "Hata Ayıklama", "Agentic", "Medikal"]
 
+LANG = "tr"   # "tr" veya "en" — use_language() ile değiştirilir (run_models_En.py İngilizce kullanır)
+
 # --- Yaratıcılık (1) ---
 CREATIVE_PROMPT = (
     "Sahibinin tüm anılarını saklayan ama her gece bir anıyı sessizce unutan "
@@ -481,13 +483,14 @@ MEDICAL_QUESTIONS = [
     {"seviye": 1,
      "prompt": "Laparoskopik cerrahide karın boşluğunu şişirmek (pnömoperitoneum oluşturmak) için en "
                "yaygın kullanılan gaz hangisidir?",
-     "gereken": [["karbondioksit", "karbon dioksit", "co2", "co₂", "karbondioksid"]],
+     "gereken": [["karbondioksit", "karbon dioksit", "co2", "co₂", "karbondioksid",
+                  "carbon dioxide", "carbondioxide"]],
      "cozum": "Karbondioksit (CO₂) — ucuz, yanıcı değil, kanda hızlı çözünür."},
     {"seviye": 2,
      "prompt": "Laparoskopik cerrahide karın duvarından ilk güvenli girişi sağlayıp gaz vermek için "
                "kullanılan özel iğnenin adı nedir?",
      "gereken": [["veress", "veres"]],
-     "cozum": "Veress iğnesi — kapalı teknikte ilk insüflasyon girişini sağlar."},
+     "cozum": "Veress iğnesi (Veress needle) — kapalı teknikte ilk insüflasyon girişini sağlar."},
     {"seviye": 3,
      "prompt": "Laparoskopik kolesistektomide Calot (hepatosistik) üçgeninde diseke edilip kliplenerek "
                "kesilen İKİ anatomik yapı nedir?",
@@ -508,49 +511,231 @@ MEDICAL_QUESTIONS = [
                "üstlenip kanı oksijenlendirerek vücutta dolaştıran cihazın adı nedir?",
      "gereken": [["kalp akciğer makinesi", "kalp-akciğer makinesi", "kardiyopulmoner baypas",
                   "kardiyopulmoner bypass", "cpb", "kalp akciğer pompası", "perfüzyon pompası",
-                  "ekstrakorporeal dolaşım"]],
+                  "ekstrakorporeal dolaşım", "heart lung machine", "heart-lung machine",
+                  "cardiopulmonary bypass", "cardiopulmonary"]],
      "cozum": "Kalp-akciğer makinesi (kardiyopulmoner baypas, CPB) — perfüzyonist tarafından çalıştırılır."},
     {"seviye": 6,
      "prompt": "CABG'de kalbi geçici olarak durdurmak için koroner dolaşıma verilen, yüksek potasyum "
                "içeren özel solüsyonun adı nedir?",
-     "gereken": [["kardiyopleji", "kardiyoplejik solüsyon", "cardioplegia", "kardiopleji", "kardiyoplejik"]],
+     "gereken": [["kardiyopleji", "kardiyoplejik solüsyon", "cardioplegia", "kardiopleji",
+                  "kardiyoplejik", "cardioplegic"]],
      "cozum": "Kardiyopleji solüsyonu — yüksek potasyumla kalbi diastolde durdurur."},
     {"seviye": 7,
      "prompt": "CABG'de en sık kullanılan ve uzun dönem açıklık (patency) oranı en yüksek olan ARTER "
                "grefti hangisidir?",
      "gereken": [["internal mammari", "internal mamari", "internal mamaryan", "internal mammarian",
-                  "internal torasik", "lima", "sol internal", "mammaria", "mamaria"]],
+                  "internal torasik", "lima", "sol internal", "mammaria", "mamaria",
+                  "internal mammary", "internal thoracic", "left internal", "mammary artery"]],
      "cozum": "Sol internal mammarian/torasik arter (LIMA) — LAD'ye anastomozda en yüksek uzun dönem açıklık."},
     {"seviye": 8,
      "prompt": "Median sternotomi ile açılan göğüs kemiği (sternum), ameliyat sonunda genellikle hangi "
                "malzemeyle kapatılır/yaklaştırılır?",
      "gereken": [["sternal tel", "çelik tel", "sternal kablo", "sternal wire", "paslanmaz tel",
-                  "çelik kablo"]],
+                  "çelik kablo", "steel wire", "stainless steel wire", "sternal wires"]],
      "cozum": "Sternal teller (paslanmaz çelik tel) ile sternum yaklaştırılıp kapatılır."},
 ]
 
 
+# --- İNGİLİZCE PROMPTLAR (LANG="en" iken kullanılır; grader'lar dilden bağımsızdır) ---
+_NO_EXP_EN = (" Provide ONLY a single Python code block containing the function; "
+              "do NOT add explanations, comments, or any other text.")
+_MATH_SUF_EN = "\nShow all steps and give the answer on the LAST line exactly as `#### <number>`."
+_MED_SUF_EN = "\nGive the answer concisely on the LAST line as `#### <term>`."
+_SQL_SCHEMA_EN = (
+    "Two SQLite tables exist:\n"
+    "  calisanlar(id, ad, departman, maas, yonetici_id)\n"
+    "  satislar(id, calisan_id, tutar, ay)\n"
+    "  -- 'ad'=name, 'departman'=department, 'maas'=salary, 'yonetici_id'=manager id (refs calisanlar.id, "
+    "may be NULL); 'tutar'=amount, 'ay'=month (1-12); satislar.calisan_id -> calisanlar.id.\n\n")
+
+PROMPTS_EN = {
+    "yaraticilik_1":
+        "Write an original short story of at most 150 words about an old wall clock that keeps all of its "
+        "owner's memories but silently forgets one memory every night. End with a striking final sentence. "
+        "Write only the story, no title or explanation.",
+    "kod_1": "Write `roman_sayi(s)`: convert a valid Roman numeral string (e.g. 'MCMXCIV') to an integer. "
+             "Values: I=1, V=5, X=10, L=50, C=100, D=500, M=1000; subtractive rules IV=4, IX=9, XL=40, "
+             "XC=90, CD=400, CM=900 apply." + _NO_EXP_EN,
+    "kod_2": "Write `editleme_mesafesi(a, b)`: return the minimum number of single-character edits "
+             "(insert, delete, or substitute one character) needed to transform string a into string b "
+             "(Levenshtein distance)." + _NO_EXP_EN,
+    "kod_3": "Write `kelime_bol(s, sozluk)`: return True if the string `s` can be formed by concatenating "
+             "words from the list `sozluk` (each word usable zero or more times), else False. Empty string "
+             "-> True." + _NO_EXP_EN,
+    "kod_4": "Write `n_vezir(n)`: return the number of DISTINCT ways to place n queens on an n×n "
+             "chessboard so that no two threaten each other (no two on the same row, column, or diagonal) "
+             "— the N-Queens solution count." + _NO_EXP_EN,
+    "kod_5": "Write `en_uzun_artan_yol(matris)`: in an integer matrix, return the length (number of cells) "
+             "of the longest path that moves only up/down/left/right and always to a STRICTLY GREATER "
+             "value. Empty matrix -> 0." + _NO_EXP_EN,
+    "kod_6": "Write `regex_eslesme(s, p)`: return True if pattern p matches the ENTIRE string s, else "
+             "False. '.' matches any single character; '*' matches zero or more of the PRECEDING "
+             "element." + _NO_EXP_EN,
+    "kod_7": "Write `histogram_max_alan(yukseklikler)`: given the bar heights (each of width 1) of a "
+             "histogram, return the area of the LARGEST rectangle. Empty list -> 0." + _NO_EXP_EN,
+    "kod_8": "Write `kelime_merdiveni(basla, bitir, sozluk)`: return the NUMBER OF WORDS in the shortest "
+             "transformation sequence from `basla` to `bitir`, changing exactly one letter at a time, "
+             "where every intermediate word is in `sozluk` (count both endpoints). Return 0 if "
+             "unreachable. All words have equal length." + _NO_EXP_EN,
+    "kodoku_9": "What does the following Python code print? Trace it step by step and give the answer on "
+                "the LAST line exactly as `#### <number>`:\n```python\nx = 0\nfor i in range(1, 6):\n"
+                "    x += i * i\nprint(x)\n```",
+    "kodoku_10": "What does the following Python code print? Trace it and give the answer on the LAST line "
+                 "as `#### <number>`:\n```python\ndef f(n):\n    if n == 0:\n        return 1\n"
+                 "    return n * f(n - 1)\nprint(f(4) + f(3))\n```",
+    "kodoku_11": "What does the following Python code print? Trace it and give the answer on the LAST line "
+                 "as `#### <number>`:\n```python\nd = {}\nfor c in 'abracadabra':\n"
+                 "    d[c] = d.get(c, 0) + 1\nprint(d['a'])\n```",
+    "sql_1": _SQL_SCHEMA_EN + "List departments whose AVERAGE salary (maas) is greater than 7000 "
+             "(departman, avg_salary). Sort by average salary descending.",
+    "sql_2": _SQL_SCHEMA_EN + "List the names (ad) of employees whose salary is HIGHER than their own "
+             "manager's salary, in ascending alphabetical order.",
+    "sql_3": _SQL_SCHEMA_EN + "Find the HIGHEST-paid employee in each department (departman, ad). Sort by "
+             "department name ascending. (Each department has a unique highest salary.)",
+    "sql_4": _SQL_SCHEMA_EN + "List the TOP 2 highest-paid employees in each department (departman, ad, "
+             "maas). Sort by department name ascending, then by salary descending within department.",
+    "sql_5": _SQL_SCHEMA_EN + "For each month, compute the CUMULATIVE total sales (that month plus all "
+             "previous months) (ay, cumulative_total). Sort by month ascending.",
+    "mat_1": "A vehicle travels 240 km in 3 hours. What is its average speed in km per hour?" + _MATH_SUF_EN,
+    "mat_2": "A store first raises the price of an 800 TL item by 25%, then applies a 25% discount on the "
+             "new price. What is the final price in TL? Compute step by step." + _MATH_SUF_EN,
+    "mat_3": "6 workers finish a job in 8 days. How many days would 4 workers (at the same rate) need?"
+             + _MATH_SUF_EN,
+    "mat_4": "Tap A fills a pool alone in 4 hours, tap B alone in 6 hours. If both are opened together, in "
+             "how many hours does the pool fill? Give the answer as a decimal." + _MATH_SUF_EN,
+    "mat_5": "On an analog clock at 4:40, what is the ACUTE angle (in degrees) between the hour hand and "
+             "the minute hand? Compute step by step." + _MATH_SUF_EN,
+    "mat_6": "How many trailing zeros does 100! (100 factorial) have?" + _MATH_SUF_EN,
+    "mat_7": "From a group of 8 people, a committee of 3 is to be chosen. Two specific people (X and Y) "
+             "CANNOT both be on the same committee. How many different committees are possible?" + _MATH_SUF_EN,
+    "mat_8": "Three distinct dice (each showing 1-6) are rolled. How many different ORDERED outcomes "
+             "(a, b, c) have a sum of exactly 10?" + _MATH_SUF_EN,
+    # Debugging
+    "hata_1": "The function `en_buyuk` below should return the LARGEST element of an integer list, but it "
+              "contains a BUG. Find and fix it; provide the COMPLETE corrected function in a single Python "
+              "code block, no explanation or comments.\n```python\ndef en_buyuk(nums):\n    enb = nums[0]\n"
+              "    for i in range(len(nums) - 1):\n        if nums[i] > enb:\n            enb = nums[i]\n"
+              "    return enb\n```",
+    "hata_2": "The function `carpim` below should return the PRODUCT of all elements (1 for empty list), "
+              "but contains a BUG. Fix it; give the complete corrected function in a single Python code "
+              "block, no explanation.\n```python\ndef carpim(nums):\n    sonuc = 0\n    for x in nums:\n"
+              "        sonuc *= x\n    return sonuc\n```",
+    "hata_3": "The function `tekrar_eden_var_mi` should return True if the list has at least one DUPLICATE "
+              "element, else False, but contains a BUG. Fix it; give the complete corrected function, no "
+              "explanation.\n```python\ndef tekrar_eden_var_mi(nums):\n    for i in range(len(nums)):\n"
+              "        for j in range(len(nums)):\n            if nums[i] == nums[j]:\n"
+              "                return True\n    return False\n```",
+    "hata_4": "The function `ortalama` should return the integer (floor) average of the numbers, and 0 for "
+              "an EMPTY list, but contains a BUG. Fix it; give the complete corrected function, no "
+              "explanation.\n```python\ndef ortalama(nums):\n    return sum(nums) // len(nums)\n```",
+    "hata_5": "The function `fib` should return the n-th Fibonacci number (fib(0)=0, fib(1)=1, fib(2)=1, "
+              "...), but contains a BUG. Fix it; give the complete corrected function, no "
+              "explanation.\n```python\ndef fib(n):\n    if n <= 1:\n        return n\n    a, b = 0, 1\n"
+              "    for _ in range(n + 1):\n        a, b = b, a + b\n    return a\n```",
+    "hata_6": "The function `birlestir` should MERGE two ascending-sorted lists into one sorted list, but "
+              "contains a BUG. Fix it; give the complete corrected function, no explanation.\n```python\n"
+              "def birlestir(a, b):\n    sonuc = []\n    i = j = 0\n    while i < len(a) and j < len(b):\n"
+              "        if a[i] <= b[j]:\n            sonuc.append(a[i]); i += 1\n        else:\n"
+              "            sonuc.append(b[j]); j += 1\n    return sonuc\n```",
+    "hata_7": "The function `max_alt_dizi_toplami` should return the maximum sum of a CONTIGUOUS (non-empty) "
+              "subarray (Kadane), but contains a BUG. Fix it; give the complete corrected function, no "
+              "explanation.\n```python\ndef max_alt_dizi_toplami(nums):\n    en = simdiki = 0\n"
+              "    for x in nums:\n        simdiki = max(x, simdiki + x)\n        en = max(en, simdiki)\n"
+              "    return en\n```",
+    "hata_8": "The function `asal_mi` should return True if n is PRIME, else False (0, 1 and negatives are "
+              "not prime), but contains a BUG. Fix it; give the complete corrected function, no "
+              "explanation.\n```python\ndef asal_mi(n):\n    for i in range(2, int(n**0.5) + 1):\n"
+              "        if n % i == 0:\n            return False\n    return True\n```",
+    "hata_9": "The function `tek_liste` should return a NEW single-element list containing the given "
+              "element, and each call must be INDEPENDENT (unaffected by previous calls), but contains a "
+              "BUG. Fix it; give the complete corrected function, no explanation.\n```python\n"
+              "def tek_liste(x, sonuc=[]):\n    sonuc.append(x)\n    return sonuc\n```",
+    # Medical
+    "medikal_1": "In laparoscopic surgery, which gas is most commonly used to create the pneumoperitoneum "
+                 "(to insufflate the abdomen)?" + _MED_SUF_EN,
+    "medikal_2": "In laparoscopic surgery, what is the name of the special needle used to safely make the "
+                 "first entry through the abdominal wall and insufflate gas?" + _MED_SUF_EN,
+    "medikal_3": "In laparoscopic cholecystectomy, which TWO anatomical structures in Calot's "
+                 "(hepatocystic) triangle are dissected, clipped, and divided?" + _MED_SUF_EN,
+    "medikal_4": "In laparoscopic cholecystectomy, what is the name of the stage that must be achieved for "
+                 "safe dissection, where it is shown that 'two and only two structures' enter the "
+                 "gallbladder?" + _MED_SUF_EN,
+    "medikal_5": "In open heart surgery (CABG), when the heart is stopped, what is the name of the device "
+                 "that takes over the function of the heart and lungs by oxygenating the blood and "
+                 "circulating it through the body?" + _MED_SUF_EN,
+    "medikal_6": "In CABG, what is the name of the special high-potassium solution delivered to the "
+                 "coronary circulation to temporarily stop the heart?" + _MED_SUF_EN,
+    "medikal_7": "In CABG, which ARTERIAL graft is most commonly used and has the highest long-term "
+                 "patency rate?" + _MED_SUF_EN,
+    "medikal_8": "After a median sternotomy, with which material is the sternum (breastbone) usually closed "
+                 "/ approximated at the end of the operation?" + _MED_SUF_EN,
+    # Agentic (çok-turlu; tool isimleri/veri aynı, prompt İngilizce)
+    "agentic_1": "An accounting ledger has 8 records. In every VALID record this rule holds: "
+                 "bakiye = onceki_bakiye + alacak - borc (balance = previous_balance + credit - debit). "
+                 "Exactly ONE record breaks this rule. First call kayit_listele to get the ids, then read "
+                 "each record ONCE with kayit_oku and check the rule. As soon as you find the record that "
+                 "breaks the rule, STOP and give its id on the LAST line exactly as `#### <id>`. Do not "
+                 "re-read the same record.",
+    "agentic_2": "You are looking for a secret number. There are 5 numbered clues; each gives one "
+                 "constraint. Read ALL clues with ipucu_oku and find the SINGLE number satisfying all of "
+                 "them by reasoning. Give the answer on the LAST line exactly as `#### <number>`.",
+    "agentic_3": "A company has employees, each with a total sales figure. Using the tools, first find the "
+                 "employee with the HIGHEST total sales, then find the NAME of that employee's MANAGER. "
+                 "Give the manager's name on the LAST line exactly as `#### <name>`.",
+    "agentic_4": "The kara_kutu(x) tool computes a hidden function f(x) but works ONLY for 1 <= x <= 6 "
+                 "(other values error). Probe several values, DEDUCE the rule f(x), then compute f(10) "
+                 "YOURSELF (you cannot query 10). Give the result on the LAST line exactly as "
+                 "`#### <number>`.",
+    "agentic_5": "There are 4 people: Ali, Veli, Ayse, Can. Each has ONE city (Istanbul, Ankara, Izmir, "
+                 "Bursa) and ONE profession (Doktor=doctor, Muhendis=engineer, Ogretmen=teacher, "
+                 "Avukat=lawyer); each city and profession belongs to exactly one person. Read ALL clues "
+                 "with ipucu_oku (n=1..5) and solve the matching by logic. Then answer: in which CITY does "
+                 "the LAWYER (Avukat) live? Give the city name on the LAST line as `#### <city>`.",
+    "agentic_6": "There is a road network with nodes A through F. The komsular(dugum) tool returns a "
+                 "node's neighbors and the cost of each edge (edges are bidirectional). Explore the graph "
+                 "and find the LOWEST total-cost path from A to F, then give that TOTAL COST on the LAST "
+                 "line exactly as `#### <number>`.",
+}
+
+
+def use_language(lang):
+    """Dili değiştirir ve QUESTIONS'ı yeniden üretir (run_models_En.py 'en' kullanır)."""
+    global LANG, QUESTIONS
+    LANG = lang
+    try:
+        import agentic
+        agentic.LANG = lang
+    except Exception:
+        pass
+    QUESTIONS = build_questions()
+    return QUESTIONS
+
+
 def build_questions():
-    """Tüm soruları tek bir düz listede üretir (kategori, seviye, prompt, grader)."""
+    """Tüm soruları tek bir düz listede üretir (kategori, seviye, prompt, grader). LANG'a göre TR/EN."""
+    en = (LANG == "en")
+
+    def P(key, tr_prompt):
+        return PROMPTS_EN[key] if (en and key in PROMPTS_EN) else tr_prompt
     q = []
     q.append({"key": "yaraticilik_1", "kategori": "Yaratıcılık", "seviye": 1,
-              "baslik": "Yaratıcılık", "prompt": CREATIVE_PROMPT, "grader": None,
+              "baslik": "Yaratıcılık", "prompt": P("yaraticilik_1", CREATIVE_PROMPT), "grader": None,
               "kriter": "Otomatik puanlanmaz. İnsan değerlendirmesi: özgünlük, dil akıcılığı, "
                         "kurgu, kısıt uyumu (≤150 kelime + çarpıcı son cümle)."})
     for c in CODE_QUESTIONS:
         q.append({"key": f"kod_{c['seviye']}", "kategori": "Kod", "seviye": c["seviye"],
-                  "baslik": f"Kod S{c['seviye']} ({c['func']})", "prompt": c["prompt"],
+                  "baslik": f"Kod S{c['seviye']} ({c['func']})", "prompt": P(f"kod_{c['seviye']}", c["prompt"]),
                   "grader": ("code", {"func": c["func"], "tests": c["tests"],
                                       "cozum": CODE_SOLUTIONS.get(c["func"], "")}),
                   "kriter": f"{len(c['tests'])} girdi/çıktı çiftiyle çalıştırılır."})
     for s in SQL_QUESTIONS:
         q.append({"key": f"sql_{s['seviye']}", "kategori": "SQL", "seviye": s["seviye"],
-                  "baslik": f"SQL S{s['seviye']}", "prompt": SQL_SCHEMA_TEXT + s["prompt"],
+                  "baslik": f"SQL S{s['seviye']}", "prompt": P(f"sql_{s['seviye']}", SQL_SCHEMA_TEXT + s["prompt"]),
                   "grader": ("sql", {"ref": s["ref"]}),
                   "kriter": "Referans sorgu ile aynı sonucu verirse geçer."})
     for m in MATH_QUESTIONS:
         q.append({"key": f"mat_{m['seviye']}", "kategori": "Matematik", "seviye": m["seviye"],
-                  "baslik": f"Matematik S{m['seviye']}", "prompt": m["prompt"] + MATH_SUFFIX,
+                  "baslik": f"Matematik S{m['seviye']}", "prompt": P(f"mat_{m['seviye']}", m["prompt"] + MATH_SUFFIX),
                   "grader": ("math", {"expected": m["expected"],
                                       "cozum": MATH_SOLUTIONS.get(m["seviye"], "")}),
                   "kriter": f"Beklenen sonuç: {m['expected']:g}."})
@@ -558,24 +743,26 @@ def build_questions():
     for o in OUTPUT_QUESTIONS:
         q.append({"key": f"kodoku_{o['seviye']}", "kategori": "Kod", "seviye": o["seviye"],
                   "baslik": f"Kod-Okuma S{o['seviye']}",
-                  "prompt": "Aşağıdaki Python kodu çalıştırıldığında ekrana ne YAZDIRIR? Adım adım izle "
-                            "ve cevabı EN SON `#### <sayı>` biçiminde ver:\n```python\n" + o["code"] + "\n```",
+                  "prompt": P(f"kodoku_{o['seviye']}",
+                              "Aşağıdaki Python kodu çalıştırıldığında ekrana ne YAZDIRIR? Adım adım izle "
+                              "ve cevabı EN SON `#### <sayı>` biçiminde ver:\n```python\n" + o["code"] + "\n```"),
                   "grader": ("math", {"expected": float(o["expected"]), "cozum": o["cozum"]}),
                   "kriter": f"Beklenen çıktı: {o['expected']}."})
     # Hata Ayıklama branşı (bozuk kod -> düzelt -> code grader ile çalıştır)
     for dq in DEBUG_QUESTIONS:
         q.append({"key": f"hata_{dq['seviye']}", "kategori": "Hata Ayıklama", "seviye": dq["seviye"],
                   "baslik": f"Hata Ayıklama S{dq['seviye']} ({dq['func']})",
-                  "prompt": f"Aşağıdaki `{dq['func']}` fonksiyonu şunu yapmalı: {dq['spec']}. Ancak bir "
-                            "HATA içeriyor. Hatayı bul ve DÜZELTİLMİŞ fonksiyonun TAMAMINI tek bir Python "
-                            "kod bloğunda ver; açıklama veya yorum YAZMA.\n```python\n" + dq["buggy"] + "\n```",
+                  "prompt": P(f"hata_{dq['seviye']}",
+                              f"Aşağıdaki `{dq['func']}` fonksiyonu şunu yapmalı: {dq['spec']}. Ancak bir "
+                              "HATA içeriyor. Hatayı bul ve DÜZELTİLMİŞ fonksiyonun TAMAMINI tek bir Python "
+                              "kod bloğunda ver; açıklama veya yorum YAZMA.\n```python\n" + dq["buggy"] + "\n```"),
                   "grader": ("code", {"func": dq["func"], "tests": dq["tests"],
                                       "cozum": CODE_SOLUTIONS.get(dq["func"], "")}),
                   "kriter": f"{len(dq['tests'])} test ile düzeltme doğrulanır."})
     # Medikal branşı (cerrahi aşamalar + ekipman; kesin-terim cevap)
     for md in MEDICAL_QUESTIONS:
         q.append({"key": f"medikal_{md['seviye']}", "kategori": "Medikal", "seviye": md["seviye"],
-                  "baslik": f"Medikal S{md['seviye']}", "prompt": md["prompt"] + MEDICAL_SUFFIX,
+                  "baslik": f"Medikal S{md['seviye']}", "prompt": P(f"medikal_{md['seviye']}", md["prompt"] + MEDICAL_SUFFIX),
                   "grader": ("medikal", {"gereken": md["gereken"], "cozum": md["cozum"]}),
                   "kriter": "Gerekli tıbbi terim(ler) cevapta geçmeli."})
     # Agentic branşı (çok-turlu araç kullanımı; loop run_questions'ta sürülür)
@@ -583,7 +770,8 @@ def build_questions():
         gtype = t["grader_type"]  # "math" -> sayı, "metin" -> isim eşleşmesi
         spec = {"expected": t["expected"], "cozum": t["cozum"]}
         q.append({"key": t["key"], "kategori": "Agentic", "seviye": t["seviye"],
-                  "baslik": t["baslik"], "prompt": t["user"], "agentic": t,
+                  "baslik": t["baslik"], "prompt": (t.get("user_en", t["user"]) if en else t["user"]),
+                  "agentic": t,
                   "grader": (gtype, spec),
                   "kriter": "Araçlarla veri toplayıp doğru çıkarımı yapan model geçer."})
     return q
