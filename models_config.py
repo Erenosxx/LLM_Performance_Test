@@ -16,8 +16,9 @@ HOST = "127.0.0.1"
 DEFAULT_CTX = 65536       # 64k context -> max_tokens otomatik ~63488; token limitine çok daha az takılır
                           # (özellikle agentic çok-turlu görevlerde sohbet birikse de yer kalır)
 DEFAULT_NGL = 99          # tüm katmanlar GPU'da (maksimum)
-SINGLE_GPU_MAX_GB = 17.0  # bu boyuta kadar olan modeller TEK GPU'da açılır (daha hızlı; GPU'lar-arası
-                          # bölme/senkron yükü yok). Daha büyükler 2 GPU'ya bölünür (-sm layer).
+# NOT: Tüm modeller ÇİFT GPU'da açılır (eşit/adil koşul, OOM riski yok). Boyut-bazlı tek/çift
+# stratejisi kaldırıldı (sınır modeller 64k'da OOM olup puan kaybediyordu).
+SINGLE_GPU_MAX_GB = 17.0  # (artık kullanılmıyor; eski launcher'larla uyumluluk için bırakıldı)
 
 # Küçükten büyüğe sıralı (hızlı geri bildirim için). İstemediğin satırı yorumla.
 MODELS = [
