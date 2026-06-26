@@ -13,8 +13,8 @@ LLAMA_SERVER = "/home/han/Desktop/llama.cpp/build/bin/llama-server"
 PORT = 8080
 HOST = "127.0.0.1"
 
-DEFAULT_CTX = 65536       # 64k context -> max_tokens otomatik ~63488; token limitine çok daha az takılır
-                          # (özellikle agentic çok-turlu görevlerde sohbet birikse de yer kalır)
+DEFAULT_CTX = 32768       # 32k context -> max_tokens otomatik ~30720. TÜM .sh launcher'lar bu değerle
+                          # (tek-tip, adil koşul). .sh artık gerçek açılışı belirler (run_models .sh'yi çalıştırır).
 DEFAULT_NGL = 99          # tüm katmanlar GPU'da (maksimum)
 # NOT: Tüm modeller ÇİFT GPU'da açılır (eşit/adil koşul, OOM riski yok). Boyut-bazlı tek/çift
 # stratejisi kaldırıldı (sınır modeller 64k'da OOM olup puan kaybediyordu).

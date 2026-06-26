@@ -101,17 +101,43 @@ def read_gpu_mem():
 # Sunucu yönetimi (her model ÇİFT GPU)
 # ---------------------------------------------------------------------------
 
+def _parse_sh_params(txt):
+    """Bir .sh launcher metninden gösterim/log için parametreleri çıkarır (-c, GPU modu)."""
+    m = re.search(r"-c\s+(\d+)", txt)
+    ctx = int(m.group(1)) if m else CFG.DEFAULT_CTX
+    cvd = re.search(r"CUDA_VISIBLE_DEVICES=(\S+)", txt)
+    sm = re.search(r"-sm\s+(\S+)", txt)
+    devs = cvd.group(1) if cvd else "0,1"
+    n_dev = len([d for d in devs.split(",") if d != ""])
+    if n_dev >= 2 and (not sm or sm.group(1) != "none"):
+        mode = "çift GPU"
+    else:
+        mode = "tek GPU"
+    return ctx, mode
+
+
 def launch_server(cfg, log_path):
-    """TÜM modeller ÇİFT GPU + flash attention ile açılır (eşit/adil koşul, OOM riski yok)."""
+    """Modeli, launch/ içindeki KENDİ open_*.sh dosyasını ÇALIŞTIRARAK açar.
+    .sh = tek doğru kaynak: dosyada hangi parametreler yazıyorsa model birebir öyle açılır
+    (-c, -fa, -sm, CUDA_VISIBLE_DEVICES, ...). Kod artık parametreleri kendisi DAYATMAZ."""
+    sh_path = os.path.join(LAUNCH_DIR, cfg["sh"]) if cfg.get("sh") else None
+    logf = open(log_path, "w")
+    if sh_path and os.path.exists(sh_path):
+        txt = open(sh_path).read()
+        ctx, gpu_mode = _parse_sh_params(txt)
+        logf.write(f"LAUNCHER: {sh_path}\n--- .sh içeriği (gerçek açılış komutu) ---\n{txt}\n---\n\n")
+        logf.flush()
+        proc = subprocess.Popen(["bash", sh_path], stdout=logf, stderr=subprocess.STDOUT)
+        return proc, logf, ctx, gpu_mode
+    # Yedek (cfg'de .sh yoksa): config varsayılanlarıyla doğrudan komut
     ctx = cfg.get("ctx", CFG.DEFAULT_CTX)
     ngl = cfg.get("ngl", CFG.DEFAULT_NGL)
     env = dict(os.environ)
-    env["CUDA_VISIBLE_DEVICES"] = "0,1"     # eşit kıyas: her model iki 4090'da
+    env["CUDA_VISIBLE_DEVICES"] = "0,1"
     cmd = [CFG.LLAMA_SERVER, "-m", model_path(cfg), "-c", str(ctx), "-ngl", str(ngl),
            "-fa", "on", "-sm", "layer", "--host", CFG.HOST, "--port", str(CFG.PORT),
            "-a", alias_of(cfg), "--jinja"]
-    logf = open(log_path, "w")
-    logf.write("CMD: " + " ".join(cmd) + "\nCUDA_VISIBLE_DEVICES=0,1\n\n")
+    logf.write("CMD (.sh bulunamadı, yedek): " + " ".join(cmd) + "\n\n")
     logf.flush()
     proc = subprocess.Popen(cmd, env=env, stdout=logf, stderr=subprocess.STDOUT)
     return proc, logf, ctx, "çift GPU"
