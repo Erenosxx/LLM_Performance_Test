@@ -110,7 +110,7 @@ def launch_server(cfg, log_path, force_dual=False):
         size_gb = 99.0
     env = dict(os.environ)
     cmd = [CFG.LLAMA_SERVER, "-m", model_path(cfg), "-c", str(ctx), "-ngl", str(ngl),
-           "--host", CFG.HOST, "--port", str(CFG.PORT), "-a", alias_of(cfg), "--jinja"]
+           "-fa", "on", "--host", CFG.HOST, "--port", str(CFG.PORT), "-a", alias_of(cfg), "--jinja"]
     if size_gb <= CFG.SINGLE_GPU_MAX_GB and not force_dual:
         # Tek GPU'ya sığıyor: bölme/senkron yükü yok -> daha hızlı + GPU daha dolu
         env["CUDA_VISIBLE_DEVICES"] = "0"
@@ -507,7 +507,7 @@ set -e
 export CUDA_VISIBLE_DEVICES={cvd}
 "{CFG.LLAMA_SERVER}" \\
   -m "{model_path(cfg)}" \\
-  -c {ctx} -ngl {ngl} -sm {sm} \\
+  -c {ctx} -ngl {ngl} -sm {sm} -fa on \\
   --host {CFG.HOST} --port {CFG.PORT} \\
   -a {alias_of(cfg)} --jinja
 """
