@@ -34,6 +34,7 @@ import glob
 import html
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -127,7 +128,10 @@ def launch_server(cfg, log_path):
         ctx, gpu_mode = _parse_sh_params(txt)
         logf.write(f"LAUNCHER: {sh_path}\n--- .sh içeriği (gerçek açılış komutu) ---\n{txt}\n---\n\n")
         logf.flush()
-        proc = subprocess.Popen(["bash", sh_path], stdout=logf, stderr=subprocess.STDOUT)
+        # start_new_session=True: bash + llama-server'ı tek process-group'a koyar ki
+        # stop_server tüm grubu öldürebilsin (yoksa bash ölür, llama-server orphan kalıp 8080'i tutar).
+        proc = subprocess.Popen(["bash", sh_path], stdout=logf, stderr=subprocess.STDOUT,
+                                start_new_session=True)
         return proc, logf, ctx, gpu_mode
     # Yedek (cfg'de .sh yoksa): config varsayılanlarıyla doğrudan komut
     ctx = cfg.get("ctx", CFG.DEFAULT_CTX)
@@ -139,7 +143,8 @@ def launch_server(cfg, log_path):
            "-a", alias_of(cfg), "--jinja"]
     logf.write("CMD (.sh bulunamadı, yedek): " + " ".join(cmd) + "\n\n")
     logf.flush()
-    proc = subprocess.Popen(cmd, env=env, stdout=logf, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(cmd, env=env, stdout=logf, stderr=subprocess.STDOUT,
+                            start_new_session=True)
     return proc, logf, ctx, "çift GPU"
 
 
@@ -159,14 +164,28 @@ def wait_health(proc, timeout=300):
     return False
 
 
+def _signal_group(proc, sig):
+    """proc'un process-group'una sinyal gönderir (bash + llama-server birlikte). Grup yoksa proc'a."""
+    try:
+        os.killpg(os.getpgid(proc.pid), sig)
+    except (ProcessLookupError, PermissionError):
+        try:
+            proc.send_signal(sig)
+        except ProcessLookupError:
+            pass
+
+
 def stop_server(proc, logf):
     if proc and proc.poll() is None:
-        proc.terminate()
+        _signal_group(proc, signal.SIGTERM)   # tüm grubu (bash + llama-server) durdur
         try:
             proc.wait(timeout=20)
         except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=10)
+            _signal_group(proc, signal.SIGKILL)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
     if logf:
         logf.close()
 
