@@ -159,7 +159,7 @@ CODE_QUESTIONS = [
      "tests": [[[[2, 3, 1, 1, 4]], 2], [[[2, 1]], 1], [[[0]], 0], [[[1, 1, 1, 1]], 3],
                [[[2, 3, 0, 1, 4]], 2], [[[1, 2, 3]], 2], [[[5, 1, 1, 1, 1]], 1]]},
     {"seviye": 11, "func": "hesap_makinesi",
-     "prompt": "`hesap_makinesi(s)` fonksiyonunu yaz: yalnızca negatif olmayan tam sayılar ve +, −, *, / "
+     "prompt": "`hesap_makinesi(s)` fonksiyonunu yaz: yalnızca negatif olmayan tam sayılar ve +, -, *, / "
                "işleçleri (ve boşluklar) içeren bir aritmetik ifade metnini, işlem ÖNCELİĞİNE uyarak "
                "(çarpma/bölme önce) hesaplayıp tam sayı sonucunu döndürsün. Bölme, sonucu SIFIRA DOĞRU "
                "kırpar (örn. 7/3 → 2). Parantez yoktur." + _NO_EXP,

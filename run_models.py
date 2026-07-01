@@ -252,7 +252,7 @@ def test_one_model(cfg, args):
 # ---------------------------------------------------------------------------
 
 SHORT_CAT = {"Yaratıcılık": "Yarat.", "Kod": "Kod", "SQL": "SQL",
-             "Matematik": "Mat", "Hata Ayıklama": "Hata"}
+             "Matematik": "Mat", "Hata Ayıklama": "Hata", "Agentic": "Agent.", "Medikal": "Medik."}
 CAT_COLORS = ["#1a3c5e", "#15803d", "#d97706", "#7c3aed", "#be123c", "#0891b2"]
 
 
