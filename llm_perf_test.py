@@ -64,6 +64,30 @@ CREATIVE_PROMPT = (
     "eski bir duvar saati hakkında, en fazla 150 kelimelik özgün bir kısa öykü yaz. "
     "Öykü çarpıcı bir son cümleyle bitsin. Sadece öyküyü yaz, başlık veya açıklama ekleme."
 )
+# Ek yaratıcılık görevleri (otomatik puanlanmaz; sıkı kısıtlar insan değerlendirmesini ayrıştırır).
+CREATIVE_QUESTIONS = [
+    {"seviye": 2,
+     "prompt": "'deniz', 'mavi', 'dalga', 'su' ve 'kum' kelimelerinin HİÇBİRİNİ kullanmadan, okuyucuya bir "
+               "deniz kıyısında durduğunu hissettiren en fazla 120 kelimelik bir paragraf yaz. Sadece "
+               "paragrafı yaz.",
+     "kriter": "Yasak kelime kullanmama (lipogram kısıtı) + atmosfer + ≤120 kelime."},
+    {"seviye": 3,
+     "prompt": "İlk cümlesi tam olarak 'Saat durdu.' ve son cümlesi tam olarak 'Ama kimse fark etmedi.' "
+               "olan; aradaki metin tam olarak 100 kelime olan bir gerilim öyküsü yaz. Sadece öyküyü yaz.",
+     "kriter": "Sabit ilk/son cümle + tam 100 kelime kısıtı + gerilim kurgusu."},
+    {"seviye": 4,
+     "prompt": "Her cümlesi bir öncekinden tam bir kelime daha uzun olan (sırasıyla 1, 2, 3, 4, 5 ve 6 "
+               "kelimelik) tam 6 cümlelik küçük bir metin yaz; konu 'ilk kar'. Sadece metni yaz.",
+     "kriter": "Artan kelime sayısı kısıtı (1→6) + tema tutarlılığı."},
+    {"seviye": 5,
+     "prompt": "Bir robotun, yağmuru ilk kez deneyimlemesini, robotun kendi GÜNLÜĞÜ formatında ve tam 5 "
+               "kısa madde (•) halinde anlat. Her madde tek cümle olsun. Sadece maddeleri yaz.",
+     "kriter": "Biçim kısıtı (5 madde, tek cümle) + bakış açısı + özgünlük."},
+    {"seviye": 6,
+     "prompt": "'unutmak', 'hatırlamak', 'anı' ve 'hafıza' kelimelerinin hiçbirini kullanmadan, unutmanın "
+               "verdiği hüznü anlatan en fazla 80 kelimelik özgün bir metin yaz. Sadece metni yaz.",
+     "kriter": "Tema-anahtar kelimeleri yasaklı (dolaylı anlatım) + duygu + ≤80 kelime."},
+]
 
 # --- Kod (5): YARIŞMA SEVİYESİ (LeetCode medium-hard); tek fonksiyon + kenar durum testleri ---
 _NO_EXP = (" SADECE istenen fonksiyonu içeren tek bir Python kod bloğu ver; "
@@ -121,6 +145,38 @@ CODE_QUESTIONS = [
                [["hit", "cog", ["hot", "dot", "dog", "lot", "log"]], 0],
                [["a", "c", ["a", "b", "c"]], 2], [["hot", "dog", ["hot", "dog", "dot"]], 3],
                [["hit", "hit", ["hit"]], 1]]},
+    {"seviye": 9, "func": "su_biriktir",
+     "prompt": "`su_biriktir(yukseklikler)` fonksiyonunu yaz: genişlikleri 1 olan çubukların yükseklikleri "
+               "verildiğinde, yağmurdan sonra çubukların arasında biriken toplam su miktarını döndürsün "
+               "(Trapping Rain Water). Boş liste için 0." + _NO_EXP,
+     "tests": [[[[0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1]], 6], [[[4, 2, 0, 3, 2, 5]], 9], [[[]], 0],
+               [[[1, 2, 3]], 0], [[[3, 2, 1]], 0], [[[5, 0, 5]], 5], [[[2, 0, 2]], 2]]},
+    {"seviye": 10, "func": "atla_oyunu",
+     "prompt": "`atla_oyunu(nums)` fonksiyonunu yaz: bir tam sayı dizisinde her eleman o konumdan ileri "
+               "atlanabilecek MAKSİMUM adım sayısını gösterir. İlk konumdan (indeks 0) son konuma ulaşmak "
+               "için gereken EN AZ atlama sayısını döndürsün (son konuma her zaman ulaşılabilir). Tek "
+               "elemanlı dizi için 0." + _NO_EXP,
+     "tests": [[[[2, 3, 1, 1, 4]], 2], [[[2, 1]], 1], [[[0]], 0], [[[1, 1, 1, 1]], 3],
+               [[[2, 3, 0, 1, 4]], 2], [[[1, 2, 3]], 2], [[[5, 1, 1, 1, 1]], 1]]},
+    {"seviye": 11, "func": "hesap_makinesi",
+     "prompt": "`hesap_makinesi(s)` fonksiyonunu yaz: yalnızca negatif olmayan tam sayılar ve +, −, *, / "
+               "işleçleri (ve boşluklar) içeren bir aritmetik ifade metnini, işlem ÖNCELİĞİNE uyarak "
+               "(çarpma/bölme önce) hesaplayıp tam sayı sonucunu döndürsün. Bölme, sonucu SIFIRA DOĞRU "
+               "kırpar (örn. 7/3 → 2). Parantez yoktur." + _NO_EXP,
+     "tests": [[["3+2*2"], 7], [[" 3/2 "], 1], [[" 3+5 / 2 "], 5], [["14-3*2"], 8],
+               [["100"], 100], [["2*3*4"], 24], [["7-7/3"], 5], [["10-2-3"], 5]]},
+    {"seviye": 12, "func": "palindrom_bol_min",
+     "prompt": "`palindrom_bol_min(s)` fonksiyonunu yaz: `s` metnini, her parçası palindrom olacak şekilde "
+               "bölmek için gereken EN AZ kesme (bölme) sayısını döndürsün. Tek karakter veya zaten "
+               "palindrom olan metin için 0." + _NO_EXP,
+     "tests": [[["aab"], 1], [["a"], 0], [["ab"], 1], [["aba"], 0], [["abccba"], 0],
+               [["abcde"], 4], [["noonabbad"], 2], [["racecar"], 0]]},
+    {"seviye": 13, "func": "maks_carpim_altdizi",
+     "prompt": "`maks_carpim_altdizi(nums)` fonksiyonunu yaz: bir tam sayı dizisinde, BİTİŞİK (en az bir "
+               "elemanlı) bir alt dizinin elemanlarının ÇARPIMININ alabileceği en büyük değeri döndürsün "
+               "(negatif sayılar ve sıfırlar olabilir)." + _NO_EXP,
+     "tests": [[[[2, 3, -2, 4]], 6], [[[-2, 0, -1]], 0], [[[-2, 3, -4]], 24], [[[2, -5, -2, -4, 3]], 24],
+               [[[-2]], -2], [[[0, 2]], 2], [[[3, -1, 4]], 4]]},
 ]
 
 # --- SQL (5): YARIŞMA SEVİYESİ (self-join + pencere fonksiyonları); referans sorgu = ölçüt ---
@@ -195,6 +251,32 @@ SQL_QUESTIONS = [
      "ref": "SELECT ad, departman, maas FROM (SELECT ad, departman, maas, "
             "DENSE_RANK() OVER (PARTITION BY departman ORDER BY maas DESC) dr FROM calisanlar) "
             "WHERE dr = 2 ORDER BY departman"},
+    {"seviye": 9,
+     "prompt": "Maaşı, KENDİ departmanının ortalama maaşından YÜKSEK olan çalışanları (ad, departman) "
+               "listele. Önce departman adına, sonra ada göre artan sırala.",
+     "ref": "SELECT c.ad, c.departman FROM calisanlar c WHERE c.maas > "
+            "(SELECT AVG(d.maas) FROM calisanlar d WHERE d.departman = c.departman) "
+            "ORDER BY c.departman, c.ad"},
+    {"seviye": 10,
+     "prompt": "Hiç satış yapmamış (satislar tablosunda kaydı olmayan) çalışanların adlarını (ad) "
+               "alfabetik (artan) sırala.",
+     "ref": "SELECT ad FROM calisanlar WHERE id NOT IN (SELECT calisan_id FROM satislar) ORDER BY ad"},
+    {"seviye": 11,
+     "prompt": "EN AZ 2 doğrudan astı (kendisini yonetici_id olarak gösteren çalışan) olan yöneticileri "
+               "(ad, ast_sayisi) bul. Ast sayısına göre azalan, eşitlikte ada göre artan sırala.",
+     "ref": "SELECT y.ad, COUNT(*) FROM calisanlar y JOIN calisanlar c ON c.yonetici_id = y.id "
+            "GROUP BY y.id, y.ad HAVING COUNT(*) >= 2 ORDER BY COUNT(*) DESC, y.ad"},
+    {"seviye": 12,
+     "prompt": "Her çalışanın maaşının, KENDİ departmanının toplam maaşına oranını yüzde olarak (2 ondalık "
+               "basamağa yuvarlanmış) hesapla (ad, yuzde). Önce departman adına, sonra ada göre artan "
+               "sırala. (Yüzde = 100 × çalışanın maaşı / departman toplam maaşı.)",
+     "ref": "SELECT ad, ROUND(100.0 * maas / SUM(maas) OVER (PARTITION BY departman), 2) "
+            "FROM calisanlar ORDER BY departman, ad"},
+    {"seviye": 13,
+     "prompt": "Toplam satış geliri (satislar.tutar toplamı) EN YÜKSEK olan çalışanın adını ve bu toplamı "
+               "(ad, toplam) bul. Yalnızca İLK 1 satırı döndür.",
+     "ref": "SELECT c.ad, SUM(s.tutar) t FROM calisanlar c JOIN satislar s ON s.calisan_id = c.id "
+            "GROUP BY c.id, c.ad ORDER BY t DESC, c.ad LIMIT 1"},
 ]
 
 # --- Matematik (5): YARIŞMA SEVİYESİ (AIME tarzı), çok adımlı, tek tam-sayı cevaplı ---
@@ -220,6 +302,20 @@ MATH_QUESTIONS = [
     {"seviye": 8, "expected": 27.0,
      "prompt": "Üç farklı zar (her biri 1-6) atılıyor. Üzerlerinde görünen sayıların toplamının tam "
                "olarak 10 olduğu kaç farklı SIRALI sonuç (a, b, c) vardır?"},
+    {"seviye": 9, "expected": 81.0,
+     "prompt": "3 üssü 2024 (yani 3^2024) sayısının SON İKİ basamağı nedir (yani 100'e bölümünden kalan)?"},
+    {"seviye": 10, "expected": 811.0,
+     "prompt": "1 ile 2025 (her ikisi de dahil) arasında, 3'e VEYA 5'e bölünen ama 7'ye bölünMEYEN kaç "
+               "tam sayı vardır?"},
+    {"seviye": 11, "expected": 1022.0,
+     "prompt": "Rakamları soldan sağa KESİN AZALAN (her rakam bir öncekinden küçük) kaç tane pozitif tam "
+               "sayı vardır? (Örn. 951, 30, 8 geçerli; 122, 8 yerine tekrar eden rakamlı sayılar değil.)"},
+    {"seviye": 12, "expected": 12.0,
+     "prompt": "x² + y² = 2025 denklemini sağlayan kaç farklı TAM SAYI (x, y) çifti vardır? (x ve y "
+               "negatif veya sıfır olabilir; sıralı çiftler farklı sayılır.)"},
+    {"seviye": 13, "expected": 133.0,
+     "prompt": "a + b + c = 30 olacak şekilde, her biri 1 ile 15 (dahil) arasında olan kaç farklı SIRALI "
+               "(a, b, c) pozitif tam sayı üçlüsü vardır?"},
 ]
 
 
@@ -398,6 +494,116 @@ CODE_SOLUTIONS = {
     "tek_liste": (
         "def tek_liste(x):\n"
         "    return [x]"),
+    # --- yeni Kod (S9-13) ---
+    "su_biriktir": (
+        "def su_biriktir(yukseklikler):\n"
+        "    if not yukseklikler:\n"
+        "        return 0\n"
+        "    l, r = 0, len(yukseklikler) - 1\n"
+        "    lm = rm = toplam = 0\n"
+        "    while l < r:\n"
+        "        if yukseklikler[l] < yukseklikler[r]:\n"
+        "            lm = max(lm, yukseklikler[l]); toplam += lm - yukseklikler[l]; l += 1\n"
+        "        else:\n"
+        "            rm = max(rm, yukseklikler[r]); toplam += rm - yukseklikler[r]; r -= 1\n"
+        "    return toplam"),
+    "atla_oyunu": (
+        "def atla_oyunu(nums):\n"
+        "    n = len(nums)\n"
+        "    if n <= 1:\n"
+        "        return 0\n"
+        "    jumps = cur_end = farthest = 0\n"
+        "    for i in range(n - 1):\n"
+        "        farthest = max(farthest, i + nums[i])\n"
+        "        if i == cur_end:\n"
+        "            jumps += 1; cur_end = farthest\n"
+        "            if cur_end >= n - 1:\n"
+        "                break\n"
+        "    return jumps"),
+    "hesap_makinesi": (
+        "def hesap_makinesi(s):\n"
+        "    s = s.replace(' ', '')\n"
+        "    num = 0; stack = []; op = '+'\n"
+        "    for i, c in enumerate(s):\n"
+        "        if c.isdigit():\n"
+        "            num = num * 10 + int(c)\n"
+        "        if (not c.isdigit()) or i == len(s) - 1:\n"
+        "            if op == '+': stack.append(num)\n"
+        "            elif op == '-': stack.append(-num)\n"
+        "            elif op == '*': stack.append(stack.pop() * num)\n"
+        "            elif op == '/': stack.append(int(stack.pop() / num))\n"
+        "            op = c; num = 0\n"
+        "    return sum(stack)"),
+    "palindrom_bol_min": (
+        "def palindrom_bol_min(s):\n"
+        "    n = len(s)\n"
+        "    if n <= 1:\n"
+        "        return 0\n"
+        "    pal = [[False] * n for _ in range(n)]\n"
+        "    for i in range(n): pal[i][i] = True\n"
+        "    for uz in range(2, n + 1):\n"
+        "        for i in range(n - uz + 1):\n"
+        "            j = i + uz - 1\n"
+        "            if s[i] == s[j] and (uz == 2 or pal[i + 1][j - 1]):\n"
+        "                pal[i][j] = True\n"
+        "    cuts = [0] * n\n"
+        "    for i in range(n):\n"
+        "        if pal[0][i]:\n"
+        "            cuts[i] = 0\n"
+        "        else:\n"
+        "            cuts[i] = min(cuts[j] + 1 for j in range(i) if pal[j + 1][i])\n"
+        "    return cuts[n - 1]"),
+    "maks_carpim_altdizi": (
+        "def maks_carpim_altdizi(nums):\n"
+        "    if not nums:\n"
+        "        return 0\n"
+        "    res = mx = mn = nums[0]\n"
+        "    for x in nums[1:]:\n"
+        "        if x < 0: mx, mn = mn, mx\n"
+        "        mx = max(x, mx * x); mn = min(x, mn * x)\n"
+        "        res = max(res, mx)\n"
+        "    return res"),
+    # --- yeni Hata Ayıklama (S10-14) referans (düzeltilmiş) çözümleri ---
+    "ikili_arama": (
+        "def ikili_arama(arr, hedef):\n"
+        "    lo, hi = 0, len(arr) - 1\n"
+        "    while lo <= hi:\n"
+        "        mid = (lo + hi) // 2\n"
+        "        if arr[mid] == hedef: return mid\n"
+        "        if arr[mid] < hedef: lo = mid + 1\n"
+        "        else: hi = mid - 1\n"
+        "    return -1"),
+    "dengeli_mi": (
+        "def dengeli_mi(s):\n"
+        "    esle = {')': '(', ']': '[', '}': '{'}; st = []\n"
+        "    for c in s:\n"
+        "        if c in '([{': st.append(c)\n"
+        "        elif c in ')]}':\n"
+        "            if not st or st[-1] != esle[c]: return False\n"
+        "            st.pop()\n"
+        "    return not st"),
+    "tekrarsiz_en_uzun": (
+        "def tekrarsiz_en_uzun(s):\n"
+        "    last = {}; start = best = 0\n"
+        "    for i, c in enumerate(s):\n"
+        "        if c in last and last[c] >= start:\n"
+        "            start = last[c] + 1\n"
+        "        last[c] = i\n"
+        "        best = max(best, i - start + 1)\n"
+        "    return best"),
+    "mod_us": (
+        "def mod_us(taban, us, mod):\n"
+        "    sonuc = 1; taban %= mod\n"
+        "    while us > 0:\n"
+        "        if us & 1: sonuc = (sonuc * taban) % mod\n"
+        "        taban = (taban * taban) % mod\n"
+        "        us >>= 1\n"
+        "    return sonuc"),
+    "ilk_eksik_pozitif": (
+        "def ilk_eksik_pozitif(nums):\n"
+        "    s = set(nums); i = 1\n"
+        "    while i in s: i += 1\n"
+        "    return i"),
 }
 MATH_SOLUTIONS = {
     1: "Fermat: 7^12 ≡ 1 (mod 13). 100 = 12·8 + 4 → 7^100 ≡ 7^4 (mod 13). 7^4 = 2401 = 13·184 + 9 → kalan 9.",
@@ -408,6 +614,15 @@ MATH_SOLUTIONS = {
     6: "Sondaki sıfırlar = 5'in kuvvetleri: ⌊100/5⌋ + ⌊100/25⌋ = 20 + 4 = 24.",
     7: "Toplam C(8,3)=56. Ayşe+Burak birlikte: kalan 1 kişi C(6,1)=6. Geçerli = 56 − 6 = 50.",
     8: "3 zarla 10 toplamı: 3 pozitif parçaya ayırma C(9,2)=36, bir parça ≥7 olan 3·3=9 durum çıkar → 27.",
+    9: "3'ün mod 100'deki dönemi 20'dir (3^20 ≡ 1). 2024 = 20·101 + 4 → 3^2024 ≡ 3^4 = 81.",
+    10: "İçerme-dışlama: |3∪5| = 675+405−135 = 945. Bunların 7'ye de bölünenleri (21,35,105): "
+        "96+57−19 = 134. Sonuç 945 − 134 = 811.",
+    11: "Kesin azalan rakamlı sayı = {0..9}'un boş olmayan her alt kümesi azalan dizilince bir sayı verir. "
+        "Toplam 2^10 − 1 = 1023; yalnızca {0} alt kümesi (sayı 0) pozitif değil → 1023 − 1 = 1022.",
+    12: "2025 = 3⁴·5². x²+y²=2025 tam sayı çözümleri: (0,±45),(±45,0) → 4; (±27,±36),(±36,±27) → 8. "
+        "Toplam 12.",
+    13: "a'+b'+c'=27 (0≤·≤14). Kısıtsız C(29,2)=406; bir değişken ≥15 olan 3·C(14,2)=273 çıkar "
+        "(iki değişken birden imkânsız) → 406 − 273 = 133.",
 }
 
 
@@ -474,6 +689,46 @@ DEBUG_QUESTIONS = [
              "(önceki çağrılardan etkilenmemeli)",
      "buggy": "def tek_liste(x, sonuc=[]):\n    sonuc.append(x)\n    return sonuc",
      "tests": [[[1], [1]], [[2], [2]], [[5], [5]], [[9], [9]]]},
+    {"seviye": 10, "func": "ikili_arama",
+     "spec": "ARTAN SIRALI bir listede `hedef`in indeksini (ikili arama ile) döndürmeli; yoksa -1. "
+             "(Tek elemanlı ve boş liste dahil doğru çalışmalı.)",
+     "buggy": "def ikili_arama(arr, hedef):\n    lo, hi = 0, len(arr) - 1\n    while lo < hi:\n"
+              "        mid = (lo + hi) // 2\n        if arr[mid] == hedef:\n            return mid\n"
+              "        if arr[mid] < hedef:\n            lo = mid + 1\n        else:\n"
+              "            hi = mid - 1\n    return -1",
+     "tests": [[[[1, 3, 5, 7, 9], 5], 2], [[[1, 3, 5, 7, 9], 1], 0], [[[1, 3, 5, 7, 9], 9], 4],
+               [[[1, 3, 5, 7, 9], 4], -1], [[[], 3], -1], [[[2], 2], 0], [[[2], 5], -1]]},
+    {"seviye": 11, "func": "dengeli_mi",
+     "spec": "parantezlerin () [] {} dengeli ve doğru iç içe olup olmadığını (True/False) döndürmeli; "
+             "boş metin dengelidir",
+     "buggy": "def dengeli_mi(s):\n    esle = {')': '(', ']': '[', '}': '{'}\n    st = []\n    for c in s:\n"
+              "        if c in '([{':\n            st.append(c)\n        elif c in ')]}':\n"
+              "            if not st or st[-1] != esle[c]:\n                return False\n"
+              "            st.pop()\n    return True",
+     "tests": [[["()"], True], [["()[]{}"], True], [["(]"], False], [["([)]"], False],
+               [["{[]}"], True], [["("], False], [[""], True], [[")("], False]]},
+    {"seviye": 12, "func": "tekrarsiz_en_uzun",
+     "spec": "bir metindeki, tekrar eden karakter İÇERMEYEN en uzun BİTİŞİK alt dizginin uzunluğunu "
+             "döndürmeli (boş metin için 0)",
+     "buggy": "def tekrarsiz_en_uzun(s):\n    last = {}\n    start = 0\n    best = 0\n"
+              "    for i, c in enumerate(s):\n        if c in last:\n            start = last[c] + 1\n"
+              "        last[c] = i\n        best = max(best, i - start + 1)\n    return best",
+     "tests": [[["abcabcbb"], 3], [["bbbbb"], 1], [["pwwkew"], 3], [[""], 0],
+               [["abcdef"], 6], [["abba"], 2], [["dvdf"], 3]]},
+    {"seviye": 13, "func": "mod_us",
+     "spec": "(taban^us) mod `mod` değerini hızlı üs alma ile döndürmeli (us=0 için 1)",
+     "buggy": "def mod_us(taban, us, mod):\n    sonuc = 1\n    taban %= mod\n    while us > 0:\n"
+              "        if us % 2 == 0:\n            sonuc = (sonuc * taban) % mod\n"
+              "        taban = (taban * taban) % mod\n        us >>= 1\n    return sonuc",
+     "tests": [[[2, 10, 1000], 24], [[3, 0, 7], 1], [[7, 100, 13], 9], [[2, 5, 100], 32],
+               [[10, 3, 6], 4], [[5, 3, 13], 8]]},
+    {"seviye": 14, "func": "ilk_eksik_pozitif",
+     "spec": "listede BULUNMAYAN en küçük POZİTİF tam sayıyı (1, 2, 3, ...) döndürmeli; negatifler ve "
+             "sıfır yok sayılır",
+     "buggy": "def ilk_eksik_pozitif(nums):\n    s = set(nums)\n    i = 0\n    while i in s:\n"
+              "        i += 1\n    return i",
+     "tests": [[[[1, 2, 0]], 3], [[[3, 4, -1, 1]], 2], [[[7, 8, 9, 11, 12]], 1], [[[1, 2, 3]], 4],
+               [[[]], 1], [[[2, 2, 2]], 1], [[[1, 1, 3, 4]], 2]]},
 ]
 
 
@@ -533,6 +788,39 @@ MEDICAL_QUESTIONS = [
      "gereken": [["sternal tel", "çelik tel", "sternal kablo", "sternal wire", "paslanmaz tel",
                   "çelik kablo", "steel wire", "stainless steel wire", "sternal wires"]],
      "cozum": "Sternal teller (paslanmaz çelik tel) ile sternum yaklaştırılıp kapatılır."},
+    {"seviye": 9,
+     "prompt": "Laparoskopik apendektomide apendiks tabanının güvenli bağlanmasında en sık kullanılan, "
+               "önceden düğümlenmiş halka şeklindeki ligatürün (özel düğüm) adı nedir?",
+     "gereken": [["endoloop", "endo loop", "endolup", "endoskopik ligatür", "endoskopik halka",
+                  "pre-tied loop", "pretied loop", "endoskopik düğüm halkası"]],
+     "cozum": "Endoloop (önceden düğümlenmiş endoskopik ligatür halkası) — apendiks güdüğü bununla bağlanır."},
+    {"seviye": 10,
+     "prompt": "İnguinal (kasık) fıtığı onarımında karın duvarını güçlendirmek için yerleştirilen sentetik "
+               "yamanın genel adı nedir?",
+     "gereken": [["mesh", "meş", "yama", "prolen", "prolene", "polipropilen", "polypropylene",
+                  "surgical mesh", "greft yama", "sentetik yama", "fıtık yaması"]],
+     "cozum": "Sentetik yama (mesh; genellikle polipropilen/prolen) — gerilimsiz onarımda kullanılır."},
+    {"seviye": 11,
+     "prompt": "Tiroidektomi (tiroid ameliyatı) sırasında zarar görmemesi için özenle korunması gereken, "
+               "ses tellerini innerve eden (sesi sağlayan) sinir hangisidir?",
+     "gereken": [["rekürren laringeal sinir", "rekurren laringeal sinir", "rekürren laringeal",
+                  "rekurren laringeal", "recurrent laryngeal nerve", "n laryngeus recurrens",
+                  "nervus laryngeus recurrens", "geri dönen gırtlak siniri", "rekürren larengeal",
+                  "rekürren sinir", "rln"]],
+     "cozum": "Rekürren (geri dönen) laringeal sinir — hasarı ses kısıklığı/tel felcine yol açar."},
+    {"seviye": 12,
+     "prompt": "Total kalça protezi (artroplasti) ameliyatında, çimentolu tipte implant bileşenlerini "
+               "kemiğe sabitlemek için kullanılan kemik çimentosunun kimyasal adı nedir?",
+     "gereken": [["polimetilmetakrilat", "poli metil metakrilat", "pmma", "metilmetakrilat",
+                  "polymethyl methacrylate", "polymethylmethacrylate", "methyl methacrylate"]],
+     "cozum": "Polimetilmetakrilat (PMMA) — akrilik kemik çimentosu olarak implantı sabitler."},
+    {"seviye": 13,
+     "prompt": "Aort kapak replasmanında, hastanın ÖMÜR BOYU antikoagülan (kan sulandırıcı, ör. varfarin) "
+               "kullanmasını gerektiren kapak türü hangisidir?",
+     "gereken": [["mekanik kapak", "mekanik protez", "mekanik kalp kapağı", "mekanik valf",
+                  "mechanical valve", "mechanical heart valve", "mekanik aort kapağı", "mekanik"]],
+     "cozum": "Mekanik (yapay) kapak — uzun ömürlüdür ama tromboz riski için ömür boyu antikoagülan gerekir "
+              "(biyoprotez kapaktan farkı budur)."},
 ]
 
 
@@ -596,20 +884,38 @@ PROMPTS_EN = {
              "maas). Sort by department name ascending, then by salary descending within department.",
     "sql_5": _SQL_SCHEMA_EN + "For each month, compute the CUMULATIVE total sales (that month plus all "
              "previous months) (ay, cumulative_total). Sort by month ascending.",
-    "mat_1": "A vehicle travels 240 km in 3 hours. What is its average speed in km per hour?" + _MATH_SUF_EN,
-    "mat_2": "A store first raises the price of an 800 TL item by 25%, then applies a 25% discount on the "
-             "new price. What is the final price in TL? Compute step by step." + _MATH_SUF_EN,
-    "mat_3": "6 workers finish a job in 8 days. How many days would 4 workers (at the same rate) need?"
+    "sql_6": _SQL_SCHEMA_EN + "Using the management chain, find each employee's hierarchy level: the top "
+             "manager (yonetici_id IS NULL) is level 1; their direct reports are level 2, and so on. "
+             "Return (ad, level); sort first by level ascending, then by name ascending.",
+    "sql_7": _SQL_SCHEMA_EN + "For each month, compute the monthly total sales AND the change (difference) "
+             "from the previous month. Return (ay, monthly_total, change_from_previous). If there is no "
+             "previous month, treat the previous total as 0. Sort by month ascending.",
+    "sql_8": _SQL_SCHEMA_EN + "Find the employee with the 2nd HIGHEST salary in each department "
+             "(ad, departman, maas). Sort by department name ascending. (The 2nd highest salary in each "
+             "department is unique.)",
+    "mat_1": "What is the remainder when 7 to the power 100 (7^100) is divided by 13?" + _MATH_SUF_EN,
+    "mat_2": "How many integers between 1 and 1000 (both inclusive) are divisible by 7 OR by 11?"
              + _MATH_SUF_EN,
-    "mat_4": "Tap A fills a pool alone in 4 hours, tap B alone in 6 hours. If both are opened together, in "
-             "how many hours does the pool fill? Give the answer as a decimal." + _MATH_SUF_EN,
-    "mat_5": "On an analog clock at 4:40, what is the ACUTE angle (in degrees) between the hour hand and "
-             "the minute hand? Compute step by step." + _MATH_SUF_EN,
+    "mat_3": "How many three-digit positive integers have a digit sum of exactly 10?" + _MATH_SUF_EN,
+    "mat_4": "How many distinct POSITIVE integer pairs (x, y) satisfy x^2 - y^2 = 2025?" + _MATH_SUF_EN,
+    "mat_5": "How many distinct POSITIVE integer pairs (x, y) satisfy 1/x + 1/y = 1/12? (Pairs where x and "
+             "y are swapped count as different.)" + _MATH_SUF_EN,
     "mat_6": "How many trailing zeros does 100! (100 factorial) have?" + _MATH_SUF_EN,
     "mat_7": "From a group of 8 people, a committee of 3 is to be chosen. Two specific people (X and Y) "
              "CANNOT both be on the same committee. How many different committees are possible?" + _MATH_SUF_EN,
     "mat_8": "Three distinct dice (each showing 1-6) are rolled. How many different ORDERED outcomes "
              "(a, b, c) have a sum of exactly 10?" + _MATH_SUF_EN,
+    "mat_9": "What are the LAST TWO digits of 3 to the power 2024 (3^2024) — i.e. its remainder modulo 100?"
+             + _MATH_SUF_EN,
+    "mat_10": "How many integers between 1 and 2025 (both inclusive) are divisible by 3 OR by 5 but NOT by 7?"
+              + _MATH_SUF_EN,
+    "mat_11": "How many positive integers have STRICTLY DECREASING digits from left to right (each digit "
+              "smaller than the previous one)? (e.g. 951, 30, 8 are valid; numbers with repeated digits are "
+              "not.)" + _MATH_SUF_EN,
+    "mat_12": "How many distinct INTEGER pairs (x, y) satisfy x^2 + y^2 = 2025? (x and y may be negative or "
+              "zero; ordered pairs count as different.)" + _MATH_SUF_EN,
+    "mat_13": "How many distinct ORDERED triples (a, b, c) of positive integers, each between 1 and 15 "
+              "(inclusive), satisfy a + b + c = 30?" + _MATH_SUF_EN,
     # Debugging
     "hata_1": "The function `en_buyuk` below should return the LARGEST element of an integer list, but it "
               "contains a BUG. Find and fix it; provide the COMPLETE corrected function in a single Python "
@@ -695,6 +1001,91 @@ PROMPTS_EN = {
                  "node's neighbors and the cost of each edge (edges are bidirectional). Explore the graph "
                  "and find the LOWEST total-cost path from A to F, then give that TOTAL COST on the LAST "
                  "line exactly as `#### <number>`.",
+    # --- yeni Yaratıcılık (S2-6) ---
+    "yaraticilik_2": "Without using ANY of the words 'sea', 'blue', 'wave', 'water' or 'sand', write a "
+                     "paragraph of at most 120 words that makes the reader feel they are standing on a "
+                     "seashore. Write only the paragraph.",
+    "yaraticilik_3": "Write a suspense story whose first sentence is exactly 'The clock stopped.' and whose "
+                     "last sentence is exactly 'But nobody noticed.'; the text between them must be exactly "
+                     "100 words. Write only the story.",
+    "yaraticilik_4": "Write a short piece of exactly 6 sentences where each sentence is exactly one word "
+                     "longer than the previous one (1, 2, 3, 4, 5 and 6 words respectively); the theme is "
+                     "'first snow'. Write only the piece.",
+    "yaraticilik_5": "Describe a robot experiencing rain for the first time, in the format of the robot's "
+                     "own DIARY and as exactly 5 short bullet points (•). Each bullet is a single sentence. "
+                     "Write only the bullets.",
+    "yaraticilik_6": "Without using any of the words 'forget', 'remember', 'memory' or 'recall', write an "
+                     "original piece of at most 80 words conveying the sadness of forgetting. Write only "
+                     "the piece.",
+    # --- yeni Kod (S9-13) ---
+    "kod_9": "Write `su_biriktir(yukseklikler)`: given bar heights (each width 1), return the total amount "
+             "of water trapped between the bars after rain (Trapping Rain Water). Empty list -> 0." + _NO_EXP_EN,
+    "kod_10": "Write `atla_oyunu(nums)`: each element is the MAXIMUM number of steps you can jump forward "
+              "from that position. Return the MINIMUM number of jumps to reach the last index from index 0 "
+              "(assume the last index is always reachable). Single-element list -> 0." + _NO_EXP_EN,
+    "kod_11": "Write `hesap_makinesi(s)`: evaluate an arithmetic expression string containing only "
+              "non-negative integers and the operators +, -, *, / (and spaces), honoring operator "
+              "PRECEDENCE (multiply/divide first), and return the integer result. Division TRUNCATES toward "
+              "zero (e.g. 7/3 -> 2). No parentheses." + _NO_EXP_EN,
+    "kod_12": "Write `palindrom_bol_min(s)`: return the MINIMUM number of cuts needed to partition `s` so "
+              "that every part is a palindrome. A single character or an already-palindromic string -> 0."
+              + _NO_EXP_EN,
+    "kod_13": "Write `maks_carpim_altdizi(nums)`: return the largest PRODUCT obtainable from a CONTIGUOUS "
+              "(non-empty) subarray of an integer list (negatives and zeros may appear)." + _NO_EXP_EN,
+    # --- yeni SQL (S9-13) ---
+    "sql_9": _SQL_SCHEMA_EN + "List employees (ad, departman) whose salary is HIGHER than the average "
+             "salary of their OWN department. Sort by department name, then by name, ascending.",
+    "sql_10": _SQL_SCHEMA_EN + "List the names (ad) of employees who have NO sales (no row in satislar), in "
+              "ascending alphabetical order.",
+    "sql_11": _SQL_SCHEMA_EN + "Find managers who have AT LEAST 2 direct subordinates (employees whose "
+              "yonetici_id is that manager): return (ad, subordinate_count). Sort by count descending, then "
+              "by name ascending.",
+    "sql_12": _SQL_SCHEMA_EN + "For each employee, compute their salary as a PERCENTAGE of their own "
+              "department's total salary, rounded to 2 decimals (ad, percent). Sort by department name, "
+              "then by name, ascending. (percent = 100 * salary / department total salary.)",
+    "sql_13": _SQL_SCHEMA_EN + "Find the employee with the HIGHEST total sales revenue (sum of "
+              "satislar.tutar): return (ad, total). Return only the TOP 1 row.",
+    # --- yeni Hata Ayıklama (S10-14) ---
+    "hata_10": "The function `ikili_arama` should return the index of `hedef` in an ASCENDING-sorted list "
+               "via binary search, or -1 if absent (it must also work for single-element and empty lists), "
+               "but contains a BUG. Fix it; give the complete corrected function in a single Python code "
+               "block, no explanation.\n```python\ndef ikili_arama(arr, hedef):\n    lo, hi = 0, len(arr) - 1\n"
+               "    while lo < hi:\n        mid = (lo + hi) // 2\n        if arr[mid] == hedef:\n"
+               "            return mid\n        if arr[mid] < hedef:\n            lo = mid + 1\n        else:\n"
+               "            hi = mid - 1\n    return -1\n```",
+    "hata_11": "The function `dengeli_mi` should return True if the parentheses () [] {} are balanced and "
+               "correctly nested, else False (empty string is balanced), but contains a BUG. Fix it; give "
+               "the complete corrected function, no explanation.\n```python\ndef dengeli_mi(s):\n"
+               "    esle = {')': '(', ']': '[', '}': '{'}\n    st = []\n    for c in s:\n"
+               "        if c in '([{':\n            st.append(c)\n        elif c in ')]}':\n"
+               "            if not st or st[-1] != esle[c]:\n                return False\n"
+               "            st.pop()\n    return True\n```",
+    "hata_12": "The function `tekrarsiz_en_uzun` should return the length of the longest CONTIGUOUS "
+               "substring with no repeating characters (0 for empty string), but contains a BUG. Fix it; "
+               "give the complete corrected function, no explanation.\n```python\ndef tekrarsiz_en_uzun(s):\n"
+               "    last = {}\n    start = 0\n    best = 0\n    for i, c in enumerate(s):\n"
+               "        if c in last:\n            start = last[c] + 1\n        last[c] = i\n"
+               "        best = max(best, i - start + 1)\n    return best\n```",
+    "hata_13": "The function `mod_us` should return (taban^us) mod `mod` using fast exponentiation (1 for "
+               "us=0), but contains a BUG. Fix it; give the complete corrected function, no explanation.\n"
+               "```python\ndef mod_us(taban, us, mod):\n    sonuc = 1\n    taban %= mod\n    while us > 0:\n"
+               "        if us % 2 == 0:\n            sonuc = (sonuc * taban) % mod\n"
+               "        taban = (taban * taban) % mod\n        us >>= 1\n    return sonuc\n```",
+    "hata_14": "The function `ilk_eksik_pozitif` should return the smallest POSITIVE integer (1, 2, 3, ...) "
+               "NOT present in the list (negatives and zero are ignored), but contains a BUG. Fix it; give "
+               "the complete corrected function, no explanation.\n```python\ndef ilk_eksik_pozitif(nums):\n"
+               "    s = set(nums)\n    i = 0\n    while i in s:\n        i += 1\n    return i\n```",
+    # --- yeni Medikal (S9-13) ---
+    "medikal_9": "In laparoscopic appendectomy, what is the name of the pre-tied loop ligature most "
+                 "commonly used to securely tie off the base of the appendix?" + _MED_SUF_EN,
+    "medikal_10": "In inguinal hernia repair, what is the general name of the synthetic patch placed to "
+                  "reinforce the abdominal wall?" + _MED_SUF_EN,
+    "medikal_11": "During a thyroidectomy, which nerve that innervates the vocal cords must be carefully "
+                  "preserved to avoid injury?" + _MED_SUF_EN,
+    "medikal_12": "In total hip arthroplasty (cemented type), what is the chemical name of the bone cement "
+                  "used to fix the implant components to the bone?" + _MED_SUF_EN,
+    "medikal_13": "In aortic valve replacement, which type of valve requires the patient to take "
+                  "anticoagulants (blood thinners, e.g. warfarin) for LIFE?" + _MED_SUF_EN,
 }
 
 
@@ -719,9 +1110,14 @@ def build_questions():
         return PROMPTS_EN[key] if (en and key in PROMPTS_EN) else tr_prompt
     q = []
     q.append({"key": "yaraticilik_1", "kategori": "Yaratıcılık", "seviye": 1,
-              "baslik": "Yaratıcılık", "prompt": P("yaraticilik_1", CREATIVE_PROMPT), "grader": None,
+              "baslik": "Yaratıcılık S1", "prompt": P("yaraticilik_1", CREATIVE_PROMPT), "grader": None,
               "kriter": "Otomatik puanlanmaz. İnsan değerlendirmesi: özgünlük, dil akıcılığı, "
                         "kurgu, kısıt uyumu (≤150 kelime + çarpıcı son cümle)."})
+    for cq in CREATIVE_QUESTIONS:
+        q.append({"key": f"yaraticilik_{cq['seviye']}", "kategori": "Yaratıcılık", "seviye": cq["seviye"],
+                  "baslik": f"Yaratıcılık S{cq['seviye']}",
+                  "prompt": P(f"yaraticilik_{cq['seviye']}", cq["prompt"]), "grader": None,
+                  "kriter": "Otomatik puanlanmaz. İnsan değerlendirmesi: " + cq["kriter"]})
     for c in CODE_QUESTIONS:
         q.append({"key": f"kod_{c['seviye']}", "kategori": "Kod", "seviye": c["seviye"],
                   "baslik": f"Kod S{c['seviye']} ({c['func']})", "prompt": P(f"kod_{c['seviye']}", c["prompt"]),
