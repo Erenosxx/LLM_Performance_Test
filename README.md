@@ -162,6 +162,39 @@ Tek-model tester (`llm_perf_test.py`) de aynı yapıyı kullanır
 - Bir model açılmazsa **durmaz**, hatayı `logs/<model>.log`'a yazıp sonrakine geçer
   (PDF'te "AÇILMADI"). Aynı model adı tekrarsa atlanır.
 - `launch/open_<model>.sh` — her modeli **manuel** açmak için de kullanabilirsin.
+  Üretilen betik şuna benzer:
+
+  ```bash
+  set -e
+  export CUDA_VISIBLE_DEVICES=0
+  "$LLAMA_SERVER" \
+    -m "$LLM_MODELS_DIR/google_gemma-4-26B-A4B-it-Q5_K_M.gguf" \
+    -c 131072 -ngl 99 -sm none -fa on \
+    --host 127.0.0.1 --port 8080 \
+    -a google_gemma-4-26B-A4B-it-Q5_K_M --jinja
+  ```
+
+  `-c` değeri modelin ÖLÇÜLMÜŞ context tavanıdır (bkz. `ctx_olcum.py`), her model
+  için farklıdır. `--host 127.0.0.1` yereldir; sunucu dışarıya açılmaz.
+
+### Örnek rapor
+
+Aşağıdakiler gerçek bir koşudan (4 model × 139 soru) alınmış sayfalardır.
+
+**Skor karşılaştırması** — ağırlıklı puan, tam geçilen soru, kararlılık, süre,
+tok/s ve modelin ÖLÇÜLMÜŞ context tavanı:
+
+![Karşılaştırma raporundaki skor tablosu: dört model için ağırlıklı puan, yüzde, tam geçen soru, kararlılık, toplam süre, ortalama tok/s ve ölçülmüş context tavanı](images/report-score-table.png)
+
+**Genel performans** — aynı skorun 12 branşa göre kırılımı; her renk bir branş,
+sütunun üstündeki sayı toplam otomatik puan:
+
+![Yığılmış sütun grafiği: dört modelin otomatik skoru 12 branşa (Kod, SQL, Mat, Hata, Agentic, Medikal, Talimat, JSON, Halüsinasyon, Türkçe, Uzun Bağlam) göre renk renk ayrılmış](images/report-performance-chart.png)
+
+**Kaynak kullanımı** — hız ve VRAM. Buradaki fark branş skorlarından bağımsızdır:
+26B-A4B (MoE) diğerlerinin üç katı hızda üretiyor:
+
+![Kaynak kullanımı tablosu: model başına ortalama token/s, toplam token, toplam süre, tepe VRAM (GB) ve GPU ortalama/tepe kullanım yüzdesi](images/report-resource-usage.png)
 
 **Birleşik PDF içeriği:**
 - Üst kısım: skor karşılaştırması (ağırlıklı puan, %, tam geçen, kararlılık, süre,

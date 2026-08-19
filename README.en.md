@@ -182,6 +182,40 @@ Model_raporları/
   gitignored.
 - If a model fails to start the run **does not stop**: the error goes to
   `logs/<model>.log` and the report shows "AÇILMADI" (did not start).
+- `launch/open_<model>.sh` can also be used to start a model **manually**. A generated
+  script looks like this:
+
+  ```bash
+  set -e
+  export CUDA_VISIBLE_DEVICES=0
+  "$LLAMA_SERVER" \
+    -m "$LLM_MODELS_DIR/google_gemma-4-26B-A4B-it-Q5_K_M.gguf" \
+    -c 131072 -ngl 99 -sm none -fa on \
+    --host 127.0.0.1 --port 8080 \
+    -a google_gemma-4-26B-A4B-it-Q5_K_M --jinja
+  ```
+
+  The `-c` value is the model's MEASURED context ceiling (see `ctx_olcum.py`) and
+  differs per model. `--host 127.0.0.1` is loopback — the server is not exposed.
+
+### Example report
+
+The pages below come from a real run (4 models × 139 questions).
+
+**Score comparison** — weighted score, fully passed questions, stability, total time,
+tok/s and the model's MEASURED context ceiling:
+
+![Score table from the comparison report: weighted score, percentage, fully passed questions, stability, total time, average tok/s and measured context ceiling for four models](images/report-score-table.png)
+
+**Overall performance** — the same score broken down by the 12 branches; each colour is
+one branch, the number above each bar is the total automatic score:
+
+![Stacked bar chart: the automatic score of four models split by the 12 branches (code, SQL, math, debugging, agentic, medical, instruction following, JSON, hallucination, Turkish, long context)](images/report-performance-chart.png)
+
+**Resource usage** — speed and VRAM. This dimension is independent of branch scores:
+26B-A4B (MoE) generates about three times faster than the others:
+
+![Resource usage table: average tokens/s, total tokens, total time, peak VRAM in GB and average/peak GPU utilisation per model](images/report-resource-usage.png)
 
 **What the comparison PDF contains:**
 
