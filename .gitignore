@@ -1,13 +1,24 @@
-# Üretilen raporlar (çıktı, yeniden üretilebilir — kullanıcının sonuç klasörü)
-Model_raporları/
+# --- MAKİNEYE ÖZEL: asla depoya girmez -------------------------------------
+# Model klasörü ve llama-server yolu. ayarlar_yerel.ornek.py'den türetilir.
+ayarlar_yerel.py
 
-# Geçici / çalışma dosyaları
+# Açılış betikleri makinenin mutlak yollarını içerir; ilk çalıştırmada
+# models_config.MODELS'ten OTOMATİK üretilir (run_models.py --gen-launchers).
+launch/open_*.sh
 launch_1/
+
+# Context ölçümü — hangi GPU'da koşulduğuna bağlı
+ctx_olcum_sonuc*.json
+
+# --- ÜRETİLEN ÇIKTI (yeniden üretilebilir) ---------------------------------
+Model_raporları/
+Model_raporlari_EN/
 logs/
 _selftest/
+kosu_*.log
+*.pdf
+
+# --- Python ----------------------------------------------------------------
 __pycache__/
 *.pyc
 *.pyo
-
-# Örnek/geçici PDF'ler
-*.pdf

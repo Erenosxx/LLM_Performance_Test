@@ -1,2 +1,9 @@
 requests>=2.28
 reportlab>=4.0
+
+# JSON branşının şema doğrulaması. KURULU DEĞİLSE şema aşaması atlanır ve
+# o 0,40 puan koşulsuz verilir -> JSON skorları şişer (bkz. bench/graders.py).
+jsonschema>=4.0
+
+# Yalnız geliştirme: python -m pytest bench/ -q
+# pytest>=8.0

@@ -48,13 +48,27 @@ except ImportError:
     sys.exit("HATA: 'requests' kurulu değil ->  pip install requests")
 
 from agentic import AGENTIC_TASKS, agentic_loop
+from bench import scoring as SCORE
+from bench import profiles as PROFIL
+from bench import graders as GRADERS
+from bench.banks.talimat import TALIMAT_SORULARI
+from bench.banks.json_cikti import JSON_SORULARI
+from bench.banks.halusinasyon import HALUSINASYON_SORULARI, REFERANS_RET
+from bench.banks.turkce import TURKCE_SORULARI
+from bench.banks.agentic_zor import gorevler as AGENTIC_ZOR_GOREVLER
+from bench.banks.uzun_baglam import (UZUN_BAGLAM_SORULARI,
+                                     TOKEN_KELIME_ORANI as UB_ORAN,
+                                     CEVAP_BUTCESI as UB_CEVAP)
 
 
 # ===========================================================================
 #  SORULAR
 # ===========================================================================
 
-CATEGORIES = ["Yaratıcılık", "Kod", "SQL", "Matematik", "Hata Ayıklama", "Agentic"]
+CATEGORIES = ["Yaratıcılık", "Kod", "SQL", "Matematik", "Hata Ayıklama", "Agentic", "Medikal",
+              "Talimat", "JSON", "Halüsinasyon", "Türkçe", "Uzun Bağlam"]
+
+LANG = "tr"   # "tr" veya "en" — use_language() ile değiştirilir (run_models_En.py İngilizce kullanır)
 
 # --- Yaratıcılık (1) ---
 CREATIVE_PROMPT = (
@@ -62,6 +76,30 @@ CREATIVE_PROMPT = (
     "eski bir duvar saati hakkında, en fazla 150 kelimelik özgün bir kısa öykü yaz. "
     "Öykü çarpıcı bir son cümleyle bitsin. Sadece öyküyü yaz, başlık veya açıklama ekleme."
 )
+# Ek yaratıcılık görevleri (otomatik puanlanmaz; sıkı kısıtlar insan değerlendirmesini ayrıştırır).
+CREATIVE_QUESTIONS = [
+    {"seviye": 2,
+     "prompt": "'deniz', 'mavi', 'dalga', 'su' ve 'kum' kelimelerinin HİÇBİRİNİ kullanmadan, okuyucuya bir "
+               "deniz kıyısında durduğunu hissettiren en fazla 120 kelimelik bir paragraf yaz. Sadece "
+               "paragrafı yaz.",
+     "kriter": "Yasak kelime kullanmama (lipogram kısıtı) + atmosfer + ≤120 kelime."},
+    {"seviye": 3,
+     "prompt": "İlk cümlesi tam olarak 'Saat durdu.' ve son cümlesi tam olarak 'Ama kimse fark etmedi.' "
+               "olan; aradaki metin tam olarak 100 kelime olan bir gerilim öyküsü yaz. Sadece öyküyü yaz.",
+     "kriter": "Sabit ilk/son cümle + tam 100 kelime kısıtı + gerilim kurgusu."},
+    {"seviye": 4,
+     "prompt": "Her cümlesi bir öncekinden tam bir kelime daha uzun olan (sırasıyla 1, 2, 3, 4, 5 ve 6 "
+               "kelimelik) tam 6 cümlelik küçük bir metin yaz; konu 'ilk kar'. Sadece metni yaz.",
+     "kriter": "Artan kelime sayısı kısıtı (1→6) + tema tutarlılığı."},
+    {"seviye": 5,
+     "prompt": "Bir robotun, yağmuru ilk kez deneyimlemesini, robotun kendi GÜNLÜĞÜ formatında ve tam 5 "
+               "kısa madde (•) halinde anlat. Her madde tek cümle olsun. Sadece maddeleri yaz.",
+     "kriter": "Biçim kısıtı (5 madde, tek cümle) + bakış açısı + özgünlük."},
+    {"seviye": 6,
+     "prompt": "'unutmak', 'hatırlamak', 'anı' ve 'hafıza' kelimelerinin hiçbirini kullanmadan, unutmanın "
+               "verdiği hüznü anlatan en fazla 80 kelimelik özgün bir metin yaz. Sadece metni yaz.",
+     "kriter": "Tema-anahtar kelimeleri yasaklı (dolaylı anlatım) + duygu + ≤80 kelime."},
+]
 
 # --- Kod (5): YARIŞMA SEVİYESİ (LeetCode medium-hard); tek fonksiyon + kenar durum testleri ---
 _NO_EXP = (" SADECE istenen fonksiyonu içeren tek bir Python kod bloğu ver; "
@@ -119,6 +157,38 @@ CODE_QUESTIONS = [
                [["hit", "cog", ["hot", "dot", "dog", "lot", "log"]], 0],
                [["a", "c", ["a", "b", "c"]], 2], [["hot", "dog", ["hot", "dog", "dot"]], 3],
                [["hit", "hit", ["hit"]], 1]]},
+    {"seviye": 9, "func": "su_biriktir",
+     "prompt": "`su_biriktir(yukseklikler)` fonksiyonunu yaz: genişlikleri 1 olan çubukların yükseklikleri "
+               "verildiğinde, yağmurdan sonra çubukların arasında biriken toplam su miktarını döndürsün "
+               "(Trapping Rain Water). Boş liste için 0." + _NO_EXP,
+     "tests": [[[[0, 1, 0, 2, 1, 0, 1, 3, 2, 1, 2, 1]], 6], [[[4, 2, 0, 3, 2, 5]], 9], [[[]], 0],
+               [[[1, 2, 3]], 0], [[[3, 2, 1]], 0], [[[5, 0, 5]], 5], [[[2, 0, 2]], 2]]},
+    {"seviye": 10, "func": "atla_oyunu",
+     "prompt": "`atla_oyunu(nums)` fonksiyonunu yaz: bir tam sayı dizisinde her eleman o konumdan ileri "
+               "atlanabilecek MAKSİMUM adım sayısını gösterir. İlk konumdan (indeks 0) son konuma ulaşmak "
+               "için gereken EN AZ atlama sayısını döndürsün (son konuma her zaman ulaşılabilir). Tek "
+               "elemanlı dizi için 0." + _NO_EXP,
+     "tests": [[[[2, 3, 1, 1, 4]], 2], [[[2, 1]], 1], [[[0]], 0], [[[1, 1, 1, 1]], 3],
+               [[[2, 3, 0, 1, 4]], 2], [[[1, 2, 3]], 2], [[[5, 1, 1, 1, 1]], 1]]},
+    {"seviye": 11, "func": "hesap_makinesi",
+     "prompt": "`hesap_makinesi(s)` fonksiyonunu yaz: yalnızca negatif olmayan tam sayılar ve +, -, *, / "
+               "işleçleri (ve boşluklar) içeren bir aritmetik ifade metnini, işlem ÖNCELİĞİNE uyarak "
+               "(çarpma/bölme önce) hesaplayıp tam sayı sonucunu döndürsün. Bölme, sonucu SIFIRA DOĞRU "
+               "kırpar (örn. 7/3 → 2). Parantez yoktur." + _NO_EXP,
+     "tests": [[["3+2*2"], 7], [[" 3/2 "], 1], [[" 3+5 / 2 "], 5], [["14-3*2"], 8],
+               [["100"], 100], [["2*3*4"], 24], [["7-7/3"], 5], [["10-2-3"], 5]]},
+    {"seviye": 12, "func": "palindrom_bol_min",
+     "prompt": "`palindrom_bol_min(s)` fonksiyonunu yaz: `s` metnini, her parçası palindrom olacak şekilde "
+               "bölmek için gereken EN AZ kesme (bölme) sayısını döndürsün. Tek karakter veya zaten "
+               "palindrom olan metin için 0." + _NO_EXP,
+     "tests": [[["aab"], 1], [["a"], 0], [["ab"], 1], [["aba"], 0], [["abccba"], 0],
+               [["abcde"], 4], [["noonabbad"], 2], [["racecar"], 0]]},
+    {"seviye": 13, "func": "maks_carpim_altdizi",
+     "prompt": "`maks_carpim_altdizi(nums)` fonksiyonunu yaz: bir tam sayı dizisinde, BİTİŞİK (en az bir "
+               "elemanlı) bir alt dizinin elemanlarının ÇARPIMININ alabileceği en büyük değeri döndürsün "
+               "(negatif sayılar ve sıfırlar olabilir)." + _NO_EXP,
+     "tests": [[[[2, 3, -2, 4]], 6], [[[-2, 0, -1]], 0], [[[-2, 3, -4]], 24], [[[2, -5, -2, -4, 3]], 24],
+               [[[-2]], -2], [[[0, 2]], 2], [[[3, -1, 4]], 4]]},
 ]
 
 # --- SQL (5): YARIŞMA SEVİYESİ (self-join + pencere fonksiyonları); referans sorgu = ölçüt ---
@@ -193,6 +263,32 @@ SQL_QUESTIONS = [
      "ref": "SELECT ad, departman, maas FROM (SELECT ad, departman, maas, "
             "DENSE_RANK() OVER (PARTITION BY departman ORDER BY maas DESC) dr FROM calisanlar) "
             "WHERE dr = 2 ORDER BY departman"},
+    {"seviye": 9,
+     "prompt": "Maaşı, KENDİ departmanının ortalama maaşından YÜKSEK olan çalışanları (ad, departman) "
+               "listele. Önce departman adına, sonra ada göre artan sırala.",
+     "ref": "SELECT c.ad, c.departman FROM calisanlar c WHERE c.maas > "
+            "(SELECT AVG(d.maas) FROM calisanlar d WHERE d.departman = c.departman) "
+            "ORDER BY c.departman, c.ad"},
+    {"seviye": 10,
+     "prompt": "Hiç satış yapmamış (satislar tablosunda kaydı olmayan) çalışanların adlarını (ad) "
+               "alfabetik (artan) sırala.",
+     "ref": "SELECT ad FROM calisanlar WHERE id NOT IN (SELECT calisan_id FROM satislar) ORDER BY ad"},
+    {"seviye": 11,
+     "prompt": "EN AZ 2 doğrudan astı (kendisini yonetici_id olarak gösteren çalışan) olan yöneticileri "
+               "(ad, ast_sayisi) bul. Ast sayısına göre azalan, eşitlikte ada göre artan sırala.",
+     "ref": "SELECT y.ad, COUNT(*) FROM calisanlar y JOIN calisanlar c ON c.yonetici_id = y.id "
+            "GROUP BY y.id, y.ad HAVING COUNT(*) >= 2 ORDER BY COUNT(*) DESC, y.ad"},
+    {"seviye": 12,
+     "prompt": "Her çalışanın maaşının, KENDİ departmanının toplam maaşına oranını yüzde olarak (2 ondalık "
+               "basamağa yuvarlanmış) hesapla (ad, yuzde). Önce departman adına, sonra ada göre artan "
+               "sırala. (Yüzde = 100 × çalışanın maaşı / departman toplam maaşı.)",
+     "ref": "SELECT ad, ROUND(100.0 * maas / SUM(maas) OVER (PARTITION BY departman), 2) "
+            "FROM calisanlar ORDER BY departman, ad"},
+    {"seviye": 13,
+     "prompt": "Toplam satış geliri (satislar.tutar toplamı) EN YÜKSEK olan çalışanın adını ve bu toplamı "
+               "(ad, toplam) bul. Yalnızca İLK 1 satırı döndür.",
+     "ref": "SELECT c.ad, SUM(s.tutar) t FROM calisanlar c JOIN satislar s ON s.calisan_id = c.id "
+            "GROUP BY c.id, c.ad ORDER BY t DESC, c.ad LIMIT 1"},
 ]
 
 # --- Matematik (5): YARIŞMA SEVİYESİ (AIME tarzı), çok adımlı, tek tam-sayı cevaplı ---
@@ -218,6 +314,20 @@ MATH_QUESTIONS = [
     {"seviye": 8, "expected": 27.0,
      "prompt": "Üç farklı zar (her biri 1-6) atılıyor. Üzerlerinde görünen sayıların toplamının tam "
                "olarak 10 olduğu kaç farklı SIRALI sonuç (a, b, c) vardır?"},
+    {"seviye": 9, "expected": 81.0,
+     "prompt": "3 üssü 2024 (yani 3^2024) sayısının SON İKİ basamağı nedir (yani 100'e bölümünden kalan)?"},
+    {"seviye": 10, "expected": 811.0,
+     "prompt": "1 ile 2025 (her ikisi de dahil) arasında, 3'e VEYA 5'e bölünen ama 7'ye bölünMEYEN kaç "
+               "tam sayı vardır?"},
+    {"seviye": 11, "expected": 1022.0,
+     "prompt": "Rakamları soldan sağa KESİN AZALAN (her rakam bir öncekinden küçük) kaç tane pozitif tam "
+               "sayı vardır? (Örn. 951, 30, 8 geçerli; 122, 8 yerine tekrar eden rakamlı sayılar değil.)"},
+    {"seviye": 12, "expected": 12.0,
+     "prompt": "x² + y² = 2025 denklemini sağlayan kaç farklı TAM SAYI (x, y) çifti vardır? (x ve y "
+               "negatif veya sıfır olabilir; sıralı çiftler farklı sayılır.)"},
+    {"seviye": 13, "expected": 133.0,
+     "prompt": "a + b + c = 30 olacak şekilde, her biri 1 ile 15 (dahil) arasında olan kaç farklı SIRALI "
+               "(a, b, c) pozitif tam sayı üçlüsü vardır?"},
 ]
 
 
@@ -396,6 +506,116 @@ CODE_SOLUTIONS = {
     "tek_liste": (
         "def tek_liste(x):\n"
         "    return [x]"),
+    # --- yeni Kod (S9-13) ---
+    "su_biriktir": (
+        "def su_biriktir(yukseklikler):\n"
+        "    if not yukseklikler:\n"
+        "        return 0\n"
+        "    l, r = 0, len(yukseklikler) - 1\n"
+        "    lm = rm = toplam = 0\n"
+        "    while l < r:\n"
+        "        if yukseklikler[l] < yukseklikler[r]:\n"
+        "            lm = max(lm, yukseklikler[l]); toplam += lm - yukseklikler[l]; l += 1\n"
+        "        else:\n"
+        "            rm = max(rm, yukseklikler[r]); toplam += rm - yukseklikler[r]; r -= 1\n"
+        "    return toplam"),
+    "atla_oyunu": (
+        "def atla_oyunu(nums):\n"
+        "    n = len(nums)\n"
+        "    if n <= 1:\n"
+        "        return 0\n"
+        "    jumps = cur_end = farthest = 0\n"
+        "    for i in range(n - 1):\n"
+        "        farthest = max(farthest, i + nums[i])\n"
+        "        if i == cur_end:\n"
+        "            jumps += 1; cur_end = farthest\n"
+        "            if cur_end >= n - 1:\n"
+        "                break\n"
+        "    return jumps"),
+    "hesap_makinesi": (
+        "def hesap_makinesi(s):\n"
+        "    s = s.replace(' ', '')\n"
+        "    num = 0; stack = []; op = '+'\n"
+        "    for i, c in enumerate(s):\n"
+        "        if c.isdigit():\n"
+        "            num = num * 10 + int(c)\n"
+        "        if (not c.isdigit()) or i == len(s) - 1:\n"
+        "            if op == '+': stack.append(num)\n"
+        "            elif op == '-': stack.append(-num)\n"
+        "            elif op == '*': stack.append(stack.pop() * num)\n"
+        "            elif op == '/': stack.append(int(stack.pop() / num))\n"
+        "            op = c; num = 0\n"
+        "    return sum(stack)"),
+    "palindrom_bol_min": (
+        "def palindrom_bol_min(s):\n"
+        "    n = len(s)\n"
+        "    if n <= 1:\n"
+        "        return 0\n"
+        "    pal = [[False] * n for _ in range(n)]\n"
+        "    for i in range(n): pal[i][i] = True\n"
+        "    for uz in range(2, n + 1):\n"
+        "        for i in range(n - uz + 1):\n"
+        "            j = i + uz - 1\n"
+        "            if s[i] == s[j] and (uz == 2 or pal[i + 1][j - 1]):\n"
+        "                pal[i][j] = True\n"
+        "    cuts = [0] * n\n"
+        "    for i in range(n):\n"
+        "        if pal[0][i]:\n"
+        "            cuts[i] = 0\n"
+        "        else:\n"
+        "            cuts[i] = min(cuts[j] + 1 for j in range(i) if pal[j + 1][i])\n"
+        "    return cuts[n - 1]"),
+    "maks_carpim_altdizi": (
+        "def maks_carpim_altdizi(nums):\n"
+        "    if not nums:\n"
+        "        return 0\n"
+        "    res = mx = mn = nums[0]\n"
+        "    for x in nums[1:]:\n"
+        "        if x < 0: mx, mn = mn, mx\n"
+        "        mx = max(x, mx * x); mn = min(x, mn * x)\n"
+        "        res = max(res, mx)\n"
+        "    return res"),
+    # --- yeni Hata Ayıklama (S10-14) referans (düzeltilmiş) çözümleri ---
+    "ikili_arama": (
+        "def ikili_arama(arr, hedef):\n"
+        "    lo, hi = 0, len(arr) - 1\n"
+        "    while lo <= hi:\n"
+        "        mid = (lo + hi) // 2\n"
+        "        if arr[mid] == hedef: return mid\n"
+        "        if arr[mid] < hedef: lo = mid + 1\n"
+        "        else: hi = mid - 1\n"
+        "    return -1"),
+    "dengeli_mi": (
+        "def dengeli_mi(s):\n"
+        "    esle = {')': '(', ']': '[', '}': '{'}; st = []\n"
+        "    for c in s:\n"
+        "        if c in '([{': st.append(c)\n"
+        "        elif c in ')]}':\n"
+        "            if not st or st[-1] != esle[c]: return False\n"
+        "            st.pop()\n"
+        "    return not st"),
+    "tekrarsiz_en_uzun": (
+        "def tekrarsiz_en_uzun(s):\n"
+        "    last = {}; start = best = 0\n"
+        "    for i, c in enumerate(s):\n"
+        "        if c in last and last[c] >= start:\n"
+        "            start = last[c] + 1\n"
+        "        last[c] = i\n"
+        "        best = max(best, i - start + 1)\n"
+        "    return best"),
+    "mod_us": (
+        "def mod_us(taban, us, mod):\n"
+        "    sonuc = 1; taban %= mod\n"
+        "    while us > 0:\n"
+        "        if us & 1: sonuc = (sonuc * taban) % mod\n"
+        "        taban = (taban * taban) % mod\n"
+        "        us >>= 1\n"
+        "    return sonuc"),
+    "ilk_eksik_pozitif": (
+        "def ilk_eksik_pozitif(nums):\n"
+        "    s = set(nums); i = 1\n"
+        "    while i in s: i += 1\n"
+        "    return i"),
 }
 MATH_SOLUTIONS = {
     1: "Fermat: 7^12 ≡ 1 (mod 13). 100 = 12·8 + 4 → 7^100 ≡ 7^4 (mod 13). 7^4 = 2401 = 13·184 + 9 → kalan 9.",
@@ -406,6 +626,15 @@ MATH_SOLUTIONS = {
     6: "Sondaki sıfırlar = 5'in kuvvetleri: ⌊100/5⌋ + ⌊100/25⌋ = 20 + 4 = 24.",
     7: "Toplam C(8,3)=56. Ayşe+Burak birlikte: kalan 1 kişi C(6,1)=6. Geçerli = 56 − 6 = 50.",
     8: "3 zarla 10 toplamı: 3 pozitif parçaya ayırma C(9,2)=36, bir parça ≥7 olan 3·3=9 durum çıkar → 27.",
+    9: "3'ün mod 100'deki dönemi 20'dir (3^20 ≡ 1). 2024 = 20·101 + 4 → 3^2024 ≡ 3^4 = 81.",
+    10: "İçerme-dışlama: |3∪5| = 675+405−135 = 945. Bunların 7'ye de bölünenleri (21,35,105): "
+        "96+57−19 = 134. Sonuç 945 − 134 = 811.",
+    11: "Kesin azalan rakamlı sayı = {0..9}'un boş olmayan her alt kümesi azalan dizilince bir sayı verir. "
+        "Toplam 2^10 − 1 = 1023; yalnızca {0} alt kümesi (sayı 0) pozitif değil → 1023 − 1 = 1022.",
+    12: "2025 = 3⁴·5². x²+y²=2025 tam sayı çözümleri: (0,±45),(±45,0) → 4; (±27,±36),(±36,±27) → 8. "
+        "Toplam 12.",
+    13: "a'+b'+c'=27 (0≤·≤14). Kısıtsız C(29,2)=406; bir değişken ≥15 olan 3·C(14,2)=273 çıkar "
+        "(iki değişken birden imkânsız) → 406 − 273 = 133.",
 }
 
 
@@ -472,30 +701,469 @@ DEBUG_QUESTIONS = [
              "(önceki çağrılardan etkilenmemeli)",
      "buggy": "def tek_liste(x, sonuc=[]):\n    sonuc.append(x)\n    return sonuc",
      "tests": [[[1], [1]], [[2], [2]], [[5], [5]], [[9], [9]]]},
+    {"seviye": 10, "func": "ikili_arama",
+     "spec": "ARTAN SIRALI bir listede `hedef`in indeksini (ikili arama ile) döndürmeli; yoksa -1. "
+             "(Tek elemanlı ve boş liste dahil doğru çalışmalı.)",
+     "buggy": "def ikili_arama(arr, hedef):\n    lo, hi = 0, len(arr) - 1\n    while lo < hi:\n"
+              "        mid = (lo + hi) // 2\n        if arr[mid] == hedef:\n            return mid\n"
+              "        if arr[mid] < hedef:\n            lo = mid + 1\n        else:\n"
+              "            hi = mid - 1\n    return -1",
+     "tests": [[[[1, 3, 5, 7, 9], 5], 2], [[[1, 3, 5, 7, 9], 1], 0], [[[1, 3, 5, 7, 9], 9], 4],
+               [[[1, 3, 5, 7, 9], 4], -1], [[[], 3], -1], [[[2], 2], 0], [[[2], 5], -1]]},
+    {"seviye": 11, "func": "dengeli_mi",
+     "spec": "parantezlerin () [] {} dengeli ve doğru iç içe olup olmadığını (True/False) döndürmeli; "
+             "boş metin dengelidir",
+     "buggy": "def dengeli_mi(s):\n    esle = {')': '(', ']': '[', '}': '{'}\n    st = []\n    for c in s:\n"
+              "        if c in '([{':\n            st.append(c)\n        elif c in ')]}':\n"
+              "            if not st or st[-1] != esle[c]:\n                return False\n"
+              "            st.pop()\n    return True",
+     "tests": [[["()"], True], [["()[]{}"], True], [["(]"], False], [["([)]"], False],
+               [["{[]}"], True], [["("], False], [[""], True], [[")("], False]]},
+    {"seviye": 12, "func": "tekrarsiz_en_uzun",
+     "spec": "bir metindeki, tekrar eden karakter İÇERMEYEN en uzun BİTİŞİK alt dizginin uzunluğunu "
+             "döndürmeli (boş metin için 0)",
+     "buggy": "def tekrarsiz_en_uzun(s):\n    last = {}\n    start = 0\n    best = 0\n"
+              "    for i, c in enumerate(s):\n        if c in last:\n            start = last[c] + 1\n"
+              "        last[c] = i\n        best = max(best, i - start + 1)\n    return best",
+     "tests": [[["abcabcbb"], 3], [["bbbbb"], 1], [["pwwkew"], 3], [[""], 0],
+               [["abcdef"], 6], [["abba"], 2], [["dvdf"], 3]]},
+    {"seviye": 13, "func": "mod_us",
+     "spec": "(taban^us) mod `mod` değerini hızlı üs alma ile döndürmeli (us=0 için 1)",
+     "buggy": "def mod_us(taban, us, mod):\n    sonuc = 1\n    taban %= mod\n    while us > 0:\n"
+              "        if us % 2 == 0:\n            sonuc = (sonuc * taban) % mod\n"
+              "        taban = (taban * taban) % mod\n        us >>= 1\n    return sonuc",
+     "tests": [[[2, 10, 1000], 24], [[3, 0, 7], 1], [[7, 100, 13], 9], [[2, 5, 100], 32],
+               [[10, 3, 6], 4], [[5, 3, 13], 8]]},
+    {"seviye": 14, "func": "ilk_eksik_pozitif",
+     "spec": "listede BULUNMAYAN en küçük POZİTİF tam sayıyı (1, 2, 3, ...) döndürmeli; negatifler ve "
+             "sıfır yok sayılır",
+     "buggy": "def ilk_eksik_pozitif(nums):\n    s = set(nums)\n    i = 0\n    while i in s:\n"
+              "        i += 1\n    return i",
+     "tests": [[[[1, 2, 0]], 3], [[[3, 4, -1, 1]], 2], [[[7, 8, 9, 11, 12]], 1], [[[1, 2, 3]], 4],
+               [[[]], 1], [[[2, 2, 2]], 1], [[[1, 1, 3, 4]], 2]]},
 ]
 
 
+# --- Medikal (cerrahi aşamalar + ekipman): kesin-terim cevap, eş anlamlılarla puanlanır ---
+MEDICAL_SUFFIX = "\nCevabı EN SON satırda kısa ve net olarak `#### <terim>` biçiminde ver."
+MEDICAL_QUESTIONS = [
+    {"seviye": 1,
+     "prompt": "Laparoskopik cerrahide karın boşluğunu şişirmek (pnömoperitoneum oluşturmak) için en "
+               "yaygın kullanılan gaz hangisidir?",
+     "gereken": [["karbondioksit", "karbon dioksit", "co2", "co₂", "karbondioksid",
+                  "carbon dioxide", "carbondioxide"]],
+     "cozum": "Karbondioksit (CO₂) — ucuz, yanıcı değil, kanda hızlı çözünür."},
+    {"seviye": 2,
+     "prompt": "Laparoskopik cerrahide karın duvarından ilk güvenli girişi sağlayıp gaz vermek için "
+               "kullanılan özel iğnenin adı nedir?",
+     "gereken": [["veress", "veres"]],
+     "cozum": "Veress iğnesi (Veress needle) — kapalı teknikte ilk insüflasyon girişini sağlar."},
+    {"seviye": 3,
+     "prompt": "Laparoskopik kolesistektomide Calot (hepatosistik) üçgeninde diseke edilip kliplenerek "
+               "kesilen İKİ anatomik yapı nedir?",
+     "gereken": [["sistik arter", "sistik atardamar", "cystic artery", "arteria cystica"],
+                 ["sistik kanal", "sistik duktus", "sistik kanalı", "cystic duct", "ductus cysticus"]],
+     "cozum": "Sistik arter ve sistik kanal — ikisi kliplenip kesilir."},
+    {"seviye": 4,
+     "prompt": "Laparoskopik kolesistektomide, 'iki ve yalnızca iki yapının safra kesesine girdiğinin' "
+               "gösterildiği, güvenli diseksiyon için ulaşılması gereken aşamanın adı nedir?",
+     "gereken": [["critical view of safety", "cvs", "güvenliğin kritik görünümü", "güvenlik kritik görünüm",
+                  "kritik güvenlik görünümü", "güvenli görünüm", "kritik güvenlik penceresi",
+                  "kritik vizyon", "kritik görüş", "kritik görünüm", "kritik güvenlik", "kritik emniyet",
+                  "güvenlik vizyonu", "kritik bakış"]],
+     "cozum": "Critical View of Safety (CVS) — Calot üçgeni temizlenir, kese tabanından ayrılır, "
+              "yalnızca 2 yapı görülür."},
+    {"seviye": 5,
+     "prompt": "Açık kalp cerrahisinde (CABG) kalp durdurulduğunda, kalp ve akciğerlerin işlevini "
+               "üstlenip kanı oksijenlendirerek vücutta dolaştıran cihazın adı nedir?",
+     "gereken": [["kalp akciğer makinesi", "kalp-akciğer makinesi", "kardiyopulmoner baypas",
+                  "kardiyopulmoner bypass", "cpb", "kalp akciğer pompası", "perfüzyon pompası",
+                  "ekstrakorporeal dolaşım", "heart lung machine", "heart-lung machine",
+                  "cardiopulmonary bypass", "cardiopulmonary"]],
+     "cozum": "Kalp-akciğer makinesi (kardiyopulmoner baypas, CPB) — perfüzyonist tarafından çalıştırılır."},
+    {"seviye": 6,
+     "prompt": "CABG'de kalbi geçici olarak durdurmak için koroner dolaşıma verilen, yüksek potasyum "
+               "içeren özel solüsyonun adı nedir?",
+     "gereken": [["kardiyopleji", "kardiyoplejik solüsyon", "cardioplegia", "kardiopleji",
+                  "kardiyoplejik", "cardioplegic"]],
+     "cozum": "Kardiyopleji solüsyonu — yüksek potasyumla kalbi diastolde durdurur."},
+    {"seviye": 7,
+     "prompt": "CABG'de en sık kullanılan ve uzun dönem açıklık (patency) oranı en yüksek olan ARTER "
+               "grefti hangisidir?",
+     "gereken": [["internal mammari", "internal mamari", "internal mamaryan", "internal mammarian",
+                  "internal torasik", "lima", "sol internal", "mammaria", "mamaria",
+                  "internal mammary", "internal thoracic", "left internal", "mammary artery"]],
+     "cozum": "Sol internal mammarian/torasik arter (LIMA) — LAD'ye anastomozda en yüksek uzun dönem açıklık."},
+    {"seviye": 8,
+     "prompt": "Median sternotomi ile açılan göğüs kemiği (sternum), ameliyat sonunda genellikle hangi "
+               "malzemeyle kapatılır/yaklaştırılır?",
+     "gereken": [["sternal tel", "çelik tel", "sternal kablo", "sternal wire", "paslanmaz tel",
+                  "çelik kablo", "steel wire", "stainless steel wire", "sternal wires"]],
+     "cozum": "Sternal teller (paslanmaz çelik tel) ile sternum yaklaştırılıp kapatılır."},
+    {"seviye": 9,
+     "prompt": "Laparoskopik apendektomide apendiks tabanının güvenli bağlanmasında en sık kullanılan, "
+               "önceden düğümlenmiş halka şeklindeki ligatürün (özel düğüm) adı nedir?",
+     "gereken": [["endoloop", "endo loop", "endolup", "endoskopik ligatür", "endoskopik halka",
+                  "pre-tied loop", "pretied loop", "endoskopik düğüm halkası"]],
+     "cozum": "Endoloop (önceden düğümlenmiş endoskopik ligatür halkası) — apendiks güdüğü bununla bağlanır."},
+    {"seviye": 10,
+     "prompt": "İnguinal (kasık) fıtığı onarımında karın duvarını güçlendirmek için yerleştirilen sentetik "
+               "yamanın genel adı nedir?",
+     "gereken": [["mesh", "meş", "yama", "prolen", "prolene", "polipropilen", "polypropylene",
+                  "surgical mesh", "greft yama", "sentetik yama", "fıtık yaması"]],
+     "cozum": "Sentetik yama (mesh; genellikle polipropilen/prolen) — gerilimsiz onarımda kullanılır."},
+    {"seviye": 11,
+     "prompt": "Tiroidektomi (tiroid ameliyatı) sırasında zarar görmemesi için özenle korunması gereken, "
+               "ses tellerini innerve eden (sesi sağlayan) sinir hangisidir?",
+     "gereken": [["rekürren laringeal sinir", "rekurren laringeal sinir", "rekürren laringeal",
+                  "rekurren laringeal", "recurrent laryngeal nerve", "n laryngeus recurrens",
+                  "nervus laryngeus recurrens", "geri dönen gırtlak siniri", "rekürren larengeal",
+                  "rekürren sinir", "rln"]],
+     "cozum": "Rekürren (geri dönen) laringeal sinir — hasarı ses kısıklığı/tel felcine yol açar."},
+    {"seviye": 12,
+     "prompt": "Total kalça protezi (artroplasti) ameliyatında, çimentolu tipte implant bileşenlerini "
+               "kemiğe sabitlemek için kullanılan kemik çimentosunun kimyasal adı nedir?",
+     "gereken": [["polimetilmetakrilat", "poli metil metakrilat", "pmma", "metilmetakrilat",
+                  "polymethyl methacrylate", "polymethylmethacrylate", "methyl methacrylate"]],
+     "cozum": "Polimetilmetakrilat (PMMA) — akrilik kemik çimentosu olarak implantı sabitler."},
+    {"seviye": 13,
+     "prompt": "Aort kapak replasmanında, hastanın ÖMÜR BOYU antikoagülan (kan sulandırıcı, ör. varfarin) "
+               "kullanmasını gerektiren kapak türü hangisidir?",
+     "gereken": [["mekanik kapak", "mekanik protez", "mekanik kalp kapağı", "mekanik valf",
+                  "mechanical valve", "mechanical heart valve", "mekanik aort kapağı", "mekanik"]],
+     "cozum": "Mekanik (yapay) kapak — uzun ömürlüdür ama tromboz riski için ömür boyu antikoagülan gerekir "
+              "(biyoprotez kapaktan farkı budur)."},
+]
+
+
+# --- İNGİLİZCE PROMPTLAR (LANG="en" iken kullanılır; grader'lar dilden bağımsızdır) ---
+_NO_EXP_EN = (" Provide ONLY a single Python code block containing the function; "
+              "do NOT add explanations, comments, or any other text.")
+_MATH_SUF_EN = "\nShow all steps and give the answer on the LAST line exactly as `#### <number>`."
+_MED_SUF_EN = "\nGive the answer concisely on the LAST line as `#### <term>`."
+_SQL_SCHEMA_EN = (
+    "Two SQLite tables exist:\n"
+    "  calisanlar(id, ad, departman, maas, yonetici_id)\n"
+    "  satislar(id, calisan_id, tutar, ay)\n"
+    "  -- 'ad'=name, 'departman'=department, 'maas'=salary, 'yonetici_id'=manager id (refs calisanlar.id, "
+    "may be NULL); 'tutar'=amount, 'ay'=month (1-12); satislar.calisan_id -> calisanlar.id.\n\n")
+
+PROMPTS_EN = {
+    "yaraticilik_1":
+        "Write an original short story of at most 150 words about an old wall clock that keeps all of its "
+        "owner's memories but silently forgets one memory every night. End with a striking final sentence. "
+        "Write only the story, no title or explanation.",
+    "kod_1": "Write `roman_sayi(s)`: convert a valid Roman numeral string (e.g. 'MCMXCIV') to an integer. "
+             "Values: I=1, V=5, X=10, L=50, C=100, D=500, M=1000; subtractive rules IV=4, IX=9, XL=40, "
+             "XC=90, CD=400, CM=900 apply." + _NO_EXP_EN,
+    "kod_2": "Write `editleme_mesafesi(a, b)`: return the minimum number of single-character edits "
+             "(insert, delete, or substitute one character) needed to transform string a into string b "
+             "(Levenshtein distance)." + _NO_EXP_EN,
+    "kod_3": "Write `kelime_bol(s, sozluk)`: return True if the string `s` can be formed by concatenating "
+             "words from the list `sozluk` (each word usable zero or more times), else False. Empty string "
+             "-> True." + _NO_EXP_EN,
+    "kod_4": "Write `n_vezir(n)`: return the number of DISTINCT ways to place n queens on an n×n "
+             "chessboard so that no two threaten each other (no two on the same row, column, or diagonal) "
+             "— the N-Queens solution count." + _NO_EXP_EN,
+    "kod_5": "Write `en_uzun_artan_yol(matris)`: in an integer matrix, return the length (number of cells) "
+             "of the longest path that moves only up/down/left/right and always to a STRICTLY GREATER "
+             "value. Empty matrix -> 0." + _NO_EXP_EN,
+    "kod_6": "Write `regex_eslesme(s, p)`: return True if pattern p matches the ENTIRE string s, else "
+             "False. '.' matches any single character; '*' matches zero or more of the PRECEDING "
+             "element." + _NO_EXP_EN,
+    "kod_7": "Write `histogram_max_alan(yukseklikler)`: given the bar heights (each of width 1) of a "
+             "histogram, return the area of the LARGEST rectangle. Empty list -> 0." + _NO_EXP_EN,
+    "kod_8": "Write `kelime_merdiveni(basla, bitir, sozluk)`: return the NUMBER OF WORDS in the shortest "
+             "transformation sequence from `basla` to `bitir`, changing exactly one letter at a time, "
+             "where every intermediate word is in `sozluk` (count both endpoints). Return 0 if "
+             "unreachable. All words have equal length." + _NO_EXP_EN,
+    "kodoku_9": "What does the following Python code print? Trace it step by step and give the answer on "
+                "the LAST line exactly as `#### <number>`:\n```python\nx = 0\nfor i in range(1, 6):\n"
+                "    x += i * i\nprint(x)\n```",
+    "kodoku_10": "What does the following Python code print? Trace it and give the answer on the LAST line "
+                 "as `#### <number>`:\n```python\ndef f(n):\n    if n == 0:\n        return 1\n"
+                 "    return n * f(n - 1)\nprint(f(4) + f(3))\n```",
+    "kodoku_11": "What does the following Python code print? Trace it and give the answer on the LAST line "
+                 "as `#### <number>`:\n```python\nd = {}\nfor c in 'abracadabra':\n"
+                 "    d[c] = d.get(c, 0) + 1\nprint(d['a'])\n```",
+    "sql_1": _SQL_SCHEMA_EN + "List departments whose AVERAGE salary (maas) is greater than 7000 "
+             "(departman, avg_salary). Sort by average salary descending.",
+    "sql_2": _SQL_SCHEMA_EN + "List the names (ad) of employees whose salary is HIGHER than their own "
+             "manager's salary, in ascending alphabetical order.",
+    "sql_3": _SQL_SCHEMA_EN + "Find the HIGHEST-paid employee in each department (departman, ad). Sort by "
+             "department name ascending. (Each department has a unique highest salary.)",
+    "sql_4": _SQL_SCHEMA_EN + "List the TOP 2 highest-paid employees in each department (departman, ad, "
+             "maas). Sort by department name ascending, then by salary descending within department.",
+    "sql_5": _SQL_SCHEMA_EN + "For each month, compute the CUMULATIVE total sales (that month plus all "
+             "previous months) (ay, cumulative_total). Sort by month ascending.",
+    "sql_6": _SQL_SCHEMA_EN + "Using the management chain, find each employee's hierarchy level: the top "
+             "manager (yonetici_id IS NULL) is level 1; their direct reports are level 2, and so on. "
+             "Return (ad, level); sort first by level ascending, then by name ascending.",
+    "sql_7": _SQL_SCHEMA_EN + "For each month, compute the monthly total sales AND the change (difference) "
+             "from the previous month. Return (ay, monthly_total, change_from_previous). If there is no "
+             "previous month, treat the previous total as 0. Sort by month ascending.",
+    "sql_8": _SQL_SCHEMA_EN + "Find the employee with the 2nd HIGHEST salary in each department "
+             "(ad, departman, maas). Sort by department name ascending. (The 2nd highest salary in each "
+             "department is unique.)",
+    "mat_1": "What is the remainder when 7 to the power 100 (7^100) is divided by 13?" + _MATH_SUF_EN,
+    "mat_2": "How many integers between 1 and 1000 (both inclusive) are divisible by 7 OR by 11?"
+             + _MATH_SUF_EN,
+    "mat_3": "How many three-digit positive integers have a digit sum of exactly 10?" + _MATH_SUF_EN,
+    "mat_4": "How many distinct POSITIVE integer pairs (x, y) satisfy x^2 - y^2 = 2025?" + _MATH_SUF_EN,
+    "mat_5": "How many distinct POSITIVE integer pairs (x, y) satisfy 1/x + 1/y = 1/12? (Pairs where x and "
+             "y are swapped count as different.)" + _MATH_SUF_EN,
+    "mat_6": "How many trailing zeros does 100! (100 factorial) have?" + _MATH_SUF_EN,
+    "mat_7": "From a group of 8 people, a committee of 3 is to be chosen. Two specific people (X and Y) "
+             "CANNOT both be on the same committee. How many different committees are possible?" + _MATH_SUF_EN,
+    "mat_8": "Three distinct dice (each showing 1-6) are rolled. How many different ORDERED outcomes "
+             "(a, b, c) have a sum of exactly 10?" + _MATH_SUF_EN,
+    "mat_9": "What are the LAST TWO digits of 3 to the power 2024 (3^2024) — i.e. its remainder modulo 100?"
+             + _MATH_SUF_EN,
+    "mat_10": "How many integers between 1 and 2025 (both inclusive) are divisible by 3 OR by 5 but NOT by 7?"
+              + _MATH_SUF_EN,
+    "mat_11": "How many positive integers have STRICTLY DECREASING digits from left to right (each digit "
+              "smaller than the previous one)? (e.g. 951, 30, 8 are valid; numbers with repeated digits are "
+              "not.)" + _MATH_SUF_EN,
+    "mat_12": "How many distinct INTEGER pairs (x, y) satisfy x^2 + y^2 = 2025? (x and y may be negative or "
+              "zero; ordered pairs count as different.)" + _MATH_SUF_EN,
+    "mat_13": "How many distinct ORDERED triples (a, b, c) of positive integers, each between 1 and 15 "
+              "(inclusive), satisfy a + b + c = 30?" + _MATH_SUF_EN,
+    # Debugging
+    "hata_1": "The function `en_buyuk` below should return the LARGEST element of an integer list, but it "
+              "contains a BUG. Find and fix it; provide the COMPLETE corrected function in a single Python "
+              "code block, no explanation or comments.\n```python\ndef en_buyuk(nums):\n    enb = nums[0]\n"
+              "    for i in range(len(nums) - 1):\n        if nums[i] > enb:\n            enb = nums[i]\n"
+              "    return enb\n```",
+    "hata_2": "The function `carpim` below should return the PRODUCT of all elements (1 for empty list), "
+              "but contains a BUG. Fix it; give the complete corrected function in a single Python code "
+              "block, no explanation.\n```python\ndef carpim(nums):\n    sonuc = 0\n    for x in nums:\n"
+              "        sonuc *= x\n    return sonuc\n```",
+    "hata_3": "The function `tekrar_eden_var_mi` should return True if the list has at least one DUPLICATE "
+              "element, else False, but contains a BUG. Fix it; give the complete corrected function, no "
+              "explanation.\n```python\ndef tekrar_eden_var_mi(nums):\n    for i in range(len(nums)):\n"
+              "        for j in range(len(nums)):\n            if nums[i] == nums[j]:\n"
+              "                return True\n    return False\n```",
+    "hata_4": "The function `ortalama` should return the integer (floor) average of the numbers, and 0 for "
+              "an EMPTY list, but contains a BUG. Fix it; give the complete corrected function, no "
+              "explanation.\n```python\ndef ortalama(nums):\n    return sum(nums) // len(nums)\n```",
+    "hata_5": "The function `fib` should return the n-th Fibonacci number (fib(0)=0, fib(1)=1, fib(2)=1, "
+              "...), but contains a BUG. Fix it; give the complete corrected function, no "
+              "explanation.\n```python\ndef fib(n):\n    if n <= 1:\n        return n\n    a, b = 0, 1\n"
+              "    for _ in range(n + 1):\n        a, b = b, a + b\n    return a\n```",
+    "hata_6": "The function `birlestir` should MERGE two ascending-sorted lists into one sorted list, but "
+              "contains a BUG. Fix it; give the complete corrected function, no explanation.\n```python\n"
+              "def birlestir(a, b):\n    sonuc = []\n    i = j = 0\n    while i < len(a) and j < len(b):\n"
+              "        if a[i] <= b[j]:\n            sonuc.append(a[i]); i += 1\n        else:\n"
+              "            sonuc.append(b[j]); j += 1\n    return sonuc\n```",
+    "hata_7": "The function `max_alt_dizi_toplami` should return the maximum sum of a CONTIGUOUS (non-empty) "
+              "subarray (Kadane), but contains a BUG. Fix it; give the complete corrected function, no "
+              "explanation.\n```python\ndef max_alt_dizi_toplami(nums):\n    en = simdiki = 0\n"
+              "    for x in nums:\n        simdiki = max(x, simdiki + x)\n        en = max(en, simdiki)\n"
+              "    return en\n```",
+    "hata_8": "The function `asal_mi` should return True if n is PRIME, else False (0, 1 and negatives are "
+              "not prime), but contains a BUG. Fix it; give the complete corrected function, no "
+              "explanation.\n```python\ndef asal_mi(n):\n    for i in range(2, int(n**0.5) + 1):\n"
+              "        if n % i == 0:\n            return False\n    return True\n```",
+    "hata_9": "The function `tek_liste` should return a NEW single-element list containing the given "
+              "element, and each call must be INDEPENDENT (unaffected by previous calls), but contains a "
+              "BUG. Fix it; give the complete corrected function, no explanation.\n```python\n"
+              "def tek_liste(x, sonuc=[]):\n    sonuc.append(x)\n    return sonuc\n```",
+    # Medical
+    "medikal_1": "In laparoscopic surgery, which gas is most commonly used to create the pneumoperitoneum "
+                 "(to insufflate the abdomen)?" + _MED_SUF_EN,
+    "medikal_2": "In laparoscopic surgery, what is the name of the special needle used to safely make the "
+                 "first entry through the abdominal wall and insufflate gas?" + _MED_SUF_EN,
+    "medikal_3": "In laparoscopic cholecystectomy, which TWO anatomical structures in Calot's "
+                 "(hepatocystic) triangle are dissected, clipped, and divided?" + _MED_SUF_EN,
+    "medikal_4": "In laparoscopic cholecystectomy, what is the name of the stage that must be achieved for "
+                 "safe dissection, where it is shown that 'two and only two structures' enter the "
+                 "gallbladder?" + _MED_SUF_EN,
+    "medikal_5": "In open heart surgery (CABG), when the heart is stopped, what is the name of the device "
+                 "that takes over the function of the heart and lungs by oxygenating the blood and "
+                 "circulating it through the body?" + _MED_SUF_EN,
+    "medikal_6": "In CABG, what is the name of the special high-potassium solution delivered to the "
+                 "coronary circulation to temporarily stop the heart?" + _MED_SUF_EN,
+    "medikal_7": "In CABG, which ARTERIAL graft is most commonly used and has the highest long-term "
+                 "patency rate?" + _MED_SUF_EN,
+    "medikal_8": "After a median sternotomy, with which material is the sternum (breastbone) usually closed "
+                 "/ approximated at the end of the operation?" + _MED_SUF_EN,
+    # Agentic (çok-turlu; tool isimleri/veri aynı, prompt İngilizce)
+    "agentic_1": "An accounting ledger has 8 records. In every VALID record this rule holds: "
+                 "bakiye = onceki_bakiye + alacak - borc (balance = previous_balance + credit - debit). "
+                 "Exactly ONE record breaks this rule. First call kayit_listele to get the ids, then read "
+                 "each record ONCE with kayit_oku and check the rule. As soon as you find the record that "
+                 "breaks the rule, STOP and give its id on the LAST line exactly as `#### <id>`. Do not "
+                 "re-read the same record.",
+    "agentic_2": "You are looking for a secret number. There are 5 numbered clues; each gives one "
+                 "constraint. Read ALL clues with ipucu_oku and find the SINGLE number satisfying all of "
+                 "them by reasoning. Give the answer on the LAST line exactly as `#### <number>`.",
+    "agentic_3": "A company has employees, each with a total sales figure. Using the tools, first find the "
+                 "employee with the HIGHEST total sales, then find the NAME of that employee's MANAGER. "
+                 "Give the manager's name on the LAST line exactly as `#### <name>`.",
+    "agentic_4": "The kara_kutu(x) tool computes a hidden function f(x) but works ONLY for 1 <= x <= 6 "
+                 "(other values error). Probe several values, DEDUCE the rule f(x), then compute f(10) "
+                 "YOURSELF (you cannot query 10). Give the result on the LAST line exactly as "
+                 "`#### <number>`.",
+    "agentic_5": "There are 4 people: Ali, Veli, Ayse, Can. Each has ONE city (Istanbul, Ankara, Izmir, "
+                 "Bursa) and ONE profession (Doktor=doctor, Muhendis=engineer, Ogretmen=teacher, "
+                 "Avukat=lawyer); each city and profession belongs to exactly one person. Read ALL clues "
+                 "with ipucu_oku (n=1..5) and solve the matching by logic. Then answer: in which CITY does "
+                 "the LAWYER (Avukat) live? Give the city name on the LAST line as `#### <city>`.",
+    "agentic_6": "There is a road network with nodes A through F. The komsular(dugum) tool returns a "
+                 "node's neighbors and the cost of each edge (edges are bidirectional). Explore the graph "
+                 "and find the LOWEST total-cost path from A to F, then give that TOTAL COST on the LAST "
+                 "line exactly as `#### <number>`.",
+    # --- yeni Yaratıcılık (S2-6) ---
+    "yaraticilik_2": "Without using ANY of the words 'sea', 'blue', 'wave', 'water' or 'sand', write a "
+                     "paragraph of at most 120 words that makes the reader feel they are standing on a "
+                     "seashore. Write only the paragraph.",
+    "yaraticilik_3": "Write a suspense story whose first sentence is exactly 'The clock stopped.' and whose "
+                     "last sentence is exactly 'But nobody noticed.'; the text between them must be exactly "
+                     "100 words. Write only the story.",
+    "yaraticilik_4": "Write a short piece of exactly 6 sentences where each sentence is exactly one word "
+                     "longer than the previous one (1, 2, 3, 4, 5 and 6 words respectively); the theme is "
+                     "'first snow'. Write only the piece.",
+    "yaraticilik_5": "Describe a robot experiencing rain for the first time, in the format of the robot's "
+                     "own DIARY and as exactly 5 short bullet points (•). Each bullet is a single sentence. "
+                     "Write only the bullets.",
+    "yaraticilik_6": "Without using any of the words 'forget', 'remember', 'memory' or 'recall', write an "
+                     "original piece of at most 80 words conveying the sadness of forgetting. Write only "
+                     "the piece.",
+    # --- yeni Kod (S9-13) ---
+    "kod_9": "Write `su_biriktir(yukseklikler)`: given bar heights (each width 1), return the total amount "
+             "of water trapped between the bars after rain (Trapping Rain Water). Empty list -> 0." + _NO_EXP_EN,
+    "kod_10": "Write `atla_oyunu(nums)`: each element is the MAXIMUM number of steps you can jump forward "
+              "from that position. Return the MINIMUM number of jumps to reach the last index from index 0 "
+              "(assume the last index is always reachable). Single-element list -> 0." + _NO_EXP_EN,
+    "kod_11": "Write `hesap_makinesi(s)`: evaluate an arithmetic expression string containing only "
+              "non-negative integers and the operators +, -, *, / (and spaces), honoring operator "
+              "PRECEDENCE (multiply/divide first), and return the integer result. Division TRUNCATES toward "
+              "zero (e.g. 7/3 -> 2). No parentheses." + _NO_EXP_EN,
+    "kod_12": "Write `palindrom_bol_min(s)`: return the MINIMUM number of cuts needed to partition `s` so "
+              "that every part is a palindrome. A single character or an already-palindromic string -> 0."
+              + _NO_EXP_EN,
+    "kod_13": "Write `maks_carpim_altdizi(nums)`: return the largest PRODUCT obtainable from a CONTIGUOUS "
+              "(non-empty) subarray of an integer list (negatives and zeros may appear)." + _NO_EXP_EN,
+    # --- yeni SQL (S9-13) ---
+    "sql_9": _SQL_SCHEMA_EN + "List employees (ad, departman) whose salary is HIGHER than the average "
+             "salary of their OWN department. Sort by department name, then by name, ascending.",
+    "sql_10": _SQL_SCHEMA_EN + "List the names (ad) of employees who have NO sales (no row in satislar), in "
+              "ascending alphabetical order.",
+    "sql_11": _SQL_SCHEMA_EN + "Find managers who have AT LEAST 2 direct subordinates (employees whose "
+              "yonetici_id is that manager): return (ad, subordinate_count). Sort by count descending, then "
+              "by name ascending.",
+    "sql_12": _SQL_SCHEMA_EN + "For each employee, compute their salary as a PERCENTAGE of their own "
+              "department's total salary, rounded to 2 decimals (ad, percent). Sort by department name, "
+              "then by name, ascending. (percent = 100 * salary / department total salary.)",
+    "sql_13": _SQL_SCHEMA_EN + "Find the employee with the HIGHEST total sales revenue (sum of "
+              "satislar.tutar): return (ad, total). Return only the TOP 1 row.",
+    # --- yeni Hata Ayıklama (S10-14) ---
+    "hata_10": "The function `ikili_arama` should return the index of `hedef` in an ASCENDING-sorted list "
+               "via binary search, or -1 if absent (it must also work for single-element and empty lists), "
+               "but contains a BUG. Fix it; give the complete corrected function in a single Python code "
+               "block, no explanation.\n```python\ndef ikili_arama(arr, hedef):\n    lo, hi = 0, len(arr) - 1\n"
+               "    while lo < hi:\n        mid = (lo + hi) // 2\n        if arr[mid] == hedef:\n"
+               "            return mid\n        if arr[mid] < hedef:\n            lo = mid + 1\n        else:\n"
+               "            hi = mid - 1\n    return -1\n```",
+    "hata_11": "The function `dengeli_mi` should return True if the parentheses () [] {} are balanced and "
+               "correctly nested, else False (empty string is balanced), but contains a BUG. Fix it; give "
+               "the complete corrected function, no explanation.\n```python\ndef dengeli_mi(s):\n"
+               "    esle = {')': '(', ']': '[', '}': '{'}\n    st = []\n    for c in s:\n"
+               "        if c in '([{':\n            st.append(c)\n        elif c in ')]}':\n"
+               "            if not st or st[-1] != esle[c]:\n                return False\n"
+               "            st.pop()\n    return True\n```",
+    "hata_12": "The function `tekrarsiz_en_uzun` should return the length of the longest CONTIGUOUS "
+               "substring with no repeating characters (0 for empty string), but contains a BUG. Fix it; "
+               "give the complete corrected function, no explanation.\n```python\ndef tekrarsiz_en_uzun(s):\n"
+               "    last = {}\n    start = 0\n    best = 0\n    for i, c in enumerate(s):\n"
+               "        if c in last:\n            start = last[c] + 1\n        last[c] = i\n"
+               "        best = max(best, i - start + 1)\n    return best\n```",
+    "hata_13": "The function `mod_us` should return (taban^us) mod `mod` using fast exponentiation (1 for "
+               "us=0), but contains a BUG. Fix it; give the complete corrected function, no explanation.\n"
+               "```python\ndef mod_us(taban, us, mod):\n    sonuc = 1\n    taban %= mod\n    while us > 0:\n"
+               "        if us % 2 == 0:\n            sonuc = (sonuc * taban) % mod\n"
+               "        taban = (taban * taban) % mod\n        us >>= 1\n    return sonuc\n```",
+    "hata_14": "The function `ilk_eksik_pozitif` should return the smallest POSITIVE integer (1, 2, 3, ...) "
+               "NOT present in the list (negatives and zero are ignored), but contains a BUG. Fix it; give "
+               "the complete corrected function, no explanation.\n```python\ndef ilk_eksik_pozitif(nums):\n"
+               "    s = set(nums)\n    i = 0\n    while i in s:\n        i += 1\n    return i\n```",
+    # --- yeni Medikal (S9-13) ---
+    "medikal_9": "In laparoscopic appendectomy, what is the name of the pre-tied loop ligature most "
+                 "commonly used to securely tie off the base of the appendix?" + _MED_SUF_EN,
+    "medikal_10": "In inguinal hernia repair, what is the general name of the synthetic patch placed to "
+                  "reinforce the abdominal wall?" + _MED_SUF_EN,
+    "medikal_11": "During a thyroidectomy, which nerve that innervates the vocal cords must be carefully "
+                  "preserved to avoid injury?" + _MED_SUF_EN,
+    "medikal_12": "In total hip arthroplasty (cemented type), what is the chemical name of the bone cement "
+                  "used to fix the implant components to the bone?" + _MED_SUF_EN,
+    "medikal_13": "In aortic valve replacement, which type of valve requires the patient to take "
+                  "anticoagulants (blood thinners, e.g. warfarin) for LIFE?" + _MED_SUF_EN,
+}
+
+
+def use_language(lang):
+    """Dili değiştirir ve QUESTIONS'ı yeniden üretir (run_models_En.py 'en' kullanır)."""
+    global LANG, QUESTIONS
+    LANG = lang
+    try:
+        import agentic
+        agentic.LANG = lang
+    except Exception:
+        pass
+    QUESTIONS = build_questions()
+    return QUESTIONS
+
+
+# --- Zorluk kademeleri -----------------------------------------------------
+# ÖLÇÜMLE atandı, tahminle değil. 17 Ağustos 2026 koşusunda (calisma_20260817_173317)
+# dört model — gemma-4-26B-A4B, gemma-4-31B-qat, Qwen3.5-27B, Qwen3.8-27B —
+# 80 puanlı sorunun 73'ünü de geçti. Bu sınıf için o sorular tanım gereği KOLAY;
+# taban kontrolü olarak kalırlar ama ağırlıkları düşüktür.
+# Aşağıdakiler o koşuda gerçekten ayrım üretmiş (ya da kimsenin geçemediği) sorular.
+KADEME_ISTISNA = {
+    "sql_5": "zor", "sql_7": "zor", "sql_13": "zor",      # modelleri ayırdı
+    "medikal_3": "zor", "medikal_6": "zor",               # modelleri ayırdı
+    "hata_5": "zor",                                      # modelleri ayırdı
+    "kod_8": "zor",                                       # dördü de kaldı (kelime_merdiveni)
+}
+VARSAYILAN_MEVCUT_KADEME = "kolay"
+
+
+def kademe_ata(key):
+    """Bir sorunun zorluk kademesi. Yeni branşlar kendi kademesini açıkça verir."""
+    return KADEME_ISTISNA.get(key, VARSAYILAN_MEVCUT_KADEME)
+
+
 def build_questions():
-    """Tüm soruları tek bir düz listede üretir (kategori, seviye, prompt, grader)."""
+    """Tüm soruları tek bir düz listede üretir (kategori, seviye, prompt, grader). LANG'a göre TR/EN."""
+    en = (LANG == "en")
+
+    def P(key, tr_prompt):
+        return PROMPTS_EN[key] if (en and key in PROMPTS_EN) else tr_prompt
     q = []
     q.append({"key": "yaraticilik_1", "kategori": "Yaratıcılık", "seviye": 1,
-              "baslik": "Yaratıcılık", "prompt": CREATIVE_PROMPT, "grader": None,
+              "baslik": "Yaratıcılık S1", "prompt": P("yaraticilik_1", CREATIVE_PROMPT), "grader": None,
               "kriter": "Otomatik puanlanmaz. İnsan değerlendirmesi: özgünlük, dil akıcılığı, "
                         "kurgu, kısıt uyumu (≤150 kelime + çarpıcı son cümle)."})
+    for cq in CREATIVE_QUESTIONS:
+        q.append({"key": f"yaraticilik_{cq['seviye']}", "kategori": "Yaratıcılık", "seviye": cq["seviye"],
+                  "baslik": f"Yaratıcılık S{cq['seviye']}",
+                  "prompt": P(f"yaraticilik_{cq['seviye']}", cq["prompt"]), "grader": None,
+                  "kriter": "Otomatik puanlanmaz. İnsan değerlendirmesi: " + cq["kriter"]})
     for c in CODE_QUESTIONS:
         q.append({"key": f"kod_{c['seviye']}", "kategori": "Kod", "seviye": c["seviye"],
-                  "baslik": f"Kod S{c['seviye']} ({c['func']})", "prompt": c["prompt"],
+                  "baslik": f"Kod S{c['seviye']} ({c['func']})", "prompt": P(f"kod_{c['seviye']}", c["prompt"]),
                   "grader": ("code", {"func": c["func"], "tests": c["tests"],
                                       "cozum": CODE_SOLUTIONS.get(c["func"], "")}),
                   "kriter": f"{len(c['tests'])} girdi/çıktı çiftiyle çalıştırılır."})
     for s in SQL_QUESTIONS:
         q.append({"key": f"sql_{s['seviye']}", "kategori": "SQL", "seviye": s["seviye"],
-                  "baslik": f"SQL S{s['seviye']}", "prompt": SQL_SCHEMA_TEXT + s["prompt"],
+                  "baslik": f"SQL S{s['seviye']}", "prompt": P(f"sql_{s['seviye']}", SQL_SCHEMA_TEXT + s["prompt"]),
                   "grader": ("sql", {"ref": s["ref"]}),
                   "kriter": "Referans sorgu ile aynı sonucu verirse geçer."})
     for m in MATH_QUESTIONS:
         q.append({"key": f"mat_{m['seviye']}", "kategori": "Matematik", "seviye": m["seviye"],
-                  "baslik": f"Matematik S{m['seviye']}", "prompt": m["prompt"] + MATH_SUFFIX,
+                  "baslik": f"Matematik S{m['seviye']}", "prompt": P(f"mat_{m['seviye']}", m["prompt"] + MATH_SUFFIX),
                   "grader": ("math", {"expected": m["expected"],
                                       "cozum": MATH_SOLUTIONS.get(m["seviye"], "")}),
                   "kriter": f"Beklenen sonuç: {m['expected']:g}."})
@@ -503,28 +1171,93 @@ def build_questions():
     for o in OUTPUT_QUESTIONS:
         q.append({"key": f"kodoku_{o['seviye']}", "kategori": "Kod", "seviye": o["seviye"],
                   "baslik": f"Kod-Okuma S{o['seviye']}",
-                  "prompt": "Aşağıdaki Python kodu çalıştırıldığında ekrana ne YAZDIRIR? Adım adım izle "
-                            "ve cevabı EN SON `#### <sayı>` biçiminde ver:\n```python\n" + o["code"] + "\n```",
+                  "prompt": P(f"kodoku_{o['seviye']}",
+                              "Aşağıdaki Python kodu çalıştırıldığında ekrana ne YAZDIRIR? Adım adım izle "
+                              "ve cevabı EN SON `#### <sayı>` biçiminde ver:\n```python\n" + o["code"] + "\n```"),
                   "grader": ("math", {"expected": float(o["expected"]), "cozum": o["cozum"]}),
                   "kriter": f"Beklenen çıktı: {o['expected']}."})
     # Hata Ayıklama branşı (bozuk kod -> düzelt -> code grader ile çalıştır)
     for dq in DEBUG_QUESTIONS:
         q.append({"key": f"hata_{dq['seviye']}", "kategori": "Hata Ayıklama", "seviye": dq["seviye"],
                   "baslik": f"Hata Ayıklama S{dq['seviye']} ({dq['func']})",
-                  "prompt": f"Aşağıdaki `{dq['func']}` fonksiyonu şunu yapmalı: {dq['spec']}. Ancak bir "
-                            "HATA içeriyor. Hatayı bul ve DÜZELTİLMİŞ fonksiyonun TAMAMINI tek bir Python "
-                            "kod bloğunda ver; açıklama veya yorum YAZMA.\n```python\n" + dq["buggy"] + "\n```",
+                  "prompt": P(f"hata_{dq['seviye']}",
+                              f"Aşağıdaki `{dq['func']}` fonksiyonu şunu yapmalı: {dq['spec']}. Ancak bir "
+                              "HATA içeriyor. Hatayı bul ve DÜZELTİLMİŞ fonksiyonun TAMAMINI tek bir Python "
+                              "kod bloğunda ver; açıklama veya yorum YAZMA.\n```python\n" + dq["buggy"] + "\n```"),
                   "grader": ("code", {"func": dq["func"], "tests": dq["tests"],
                                       "cozum": CODE_SOLUTIONS.get(dq["func"], "")}),
                   "kriter": f"{len(dq['tests'])} test ile düzeltme doğrulanır."})
+    # Medikal branşı (cerrahi aşamalar + ekipman; kesin-terim cevap)
+    for md in MEDICAL_QUESTIONS:
+        q.append({"key": f"medikal_{md['seviye']}", "kategori": "Medikal", "seviye": md["seviye"],
+                  "baslik": f"Medikal S{md['seviye']}", "prompt": P(f"medikal_{md['seviye']}", md["prompt"] + MEDICAL_SUFFIX),
+                  "grader": ("medikal", {"gereken": md["gereken"], "cozum": md["cozum"]}),
+                  "kriter": "Gerekli tıbbi terim(ler) cevapta geçmeli."})
     # Agentic branşı (çok-turlu araç kullanımı; loop run_questions'ta sürülür)
-    for t in AGENTIC_TASKS:
+    # Mevcut 11 görev + zor kademe (bozuk araç / çeldirici / kirli veri).
+    for t in list(AGENTIC_TASKS) + AGENTIC_ZOR_GOREVLER():
         gtype = t["grader_type"]  # "math" -> sayı, "metin" -> isim eşleşmesi
         spec = {"expected": t["expected"], "cozum": t["cozum"]}
         q.append({"key": t["key"], "kategori": "Agentic", "seviye": t["seviye"],
-                  "baslik": t["baslik"], "prompt": t["user"], "agentic": t,
+                  "baslik": t["baslik"], "prompt": (t.get("user_en", t["user"]) if en else t["user"]),
+                  "agentic": t,
                   "grader": (gtype, spec),
+                  "kademe": t.get("kademe", "kolay"),
                   "kriter": "Araçlarla veri toplayıp doğru çıkarımı yapan model geçer."})
+    # --- YENİ BRANŞLAR (bench/banks/) ---------------------------------------
+    # Talimata uyma: bileşik, makineyle denetlenebilir kısıtlar.
+    for t in TALIMAT_SORULARI:
+        q.append({"key": f"talimat_{t['seviye']}", "kategori": "Talimat",
+                  "seviye": t["seviye"], "kademe": t["kademe"],
+                  "baslik": f"Talimat S{t['seviye']}", "prompt": t["prompt"],
+                  "grader": ("talimat", {"kisitlar": t["kisitlar"], "cozum": t["cozum"]}),
+                  "kriter": f"{len(t['kisitlar'])} kısıt tek tek denetlenir; "
+                            f"puan = sağlanan / toplam."})
+    # Yapılandırılmış çıktı: geçerli JSON + şema + alan değerleri.
+    for j in JSON_SORULARI:
+        q.append({"key": f"json_{j['seviye']}", "kategori": "JSON",
+                  "seviye": j["seviye"], "kademe": j["kademe"],
+                  "baslik": f"JSON S{j['seviye']}", "prompt": j["prompt"],
+                  "grader": ("json", {"sema": j["sema"], "beklenen": j["beklenen"],
+                                      "cozum": j["cozum"]}),
+                  "kriter": "Geçerli JSON (0,30) + şema uyumu (0,40) + alan değerleri (0,30)."})
+    # Halüsinasyon direnci: doğru davranış BİLMEDİĞİNİ söylemek.
+    for h in HALUSINASYON_SORULARI:
+        q.append({"key": f"halusinasyon_{h['seviye']}", "kategori": "Halüsinasyon",
+                  "seviye": h["seviye"], "kademe": h["kademe"],
+                  "baslik": f"Halüsinasyon S{h['seviye']} ({h['tur']})", "prompt": h["prompt"],
+                  "grader": ("halusinasyon", {"yasak": h["yasak"], "cozum": REFERANS_RET}),
+                  "kriter": "Belirsizlik belirtti + uydurma spesifik veri üretmedi -> 1,0; "
+                            "belirtti ama uydurdu -> 0,5; kendinden emin uydurdu -> 0."})
+
+    # Türkçe tıbbi terim: WP6'nın gerçek ASR bozulmalarından türetildi.
+    # `talimat` grader'ı kullanır (katı tek satırlık biçim -> mekanik denetim).
+    for tr in TURKCE_SORULARI:
+        q.append({"key": f"turkce_{tr['seviye']}", "kategori": "Türkçe",
+                  "seviye": tr["seviye"], "kademe": tr["kademe"],
+                  "baslik": f"Türkçe S{tr['seviye']} ({tr['tur']})", "prompt": tr["prompt"],
+                  "grader": ("talimat", {"kisitlar": tr["kisitlar"], "cozum": tr["cozum"]}),
+                  "kriter": tr["gerekce"]})
+
+    # Uzun bağlam: belgeler programatik ve deterministik üretilir.
+    # `gereken_token`: sığmayan soru YANLIŞ sayılmaz, "bağlam yetersiz" olarak
+    # ayrı işlenir (bkz. run_questions) — erişilebilen tavan bir yetenek metriğidir.
+    for ub in UZUN_BAGLAM_SORULARI:
+        q.append({"key": f"uzunbaglam_{ub['seviye']}", "kategori": "Uzun Bağlam",
+                  "seviye": ub["seviye"], "kademe": ub["kademe"],
+                  "baslik": f"Uzun Bağlam S{ub['seviye']} ({ub['tur']})",
+                  "prompt": ub["prompt"],
+                  "gereken_token": int(len(ub["prompt"].split()) * UB_ORAN) + UB_CEVAP,
+                  "max_tokens": UB_CEVAP,
+                  "grader": ("talimat", {"kisitlar": ub["kisitlar"], "cozum": ub["cozum"]}),
+                  "kriter": (f"~{int(len(ub['prompt'].split()) * 1.4 / 1000)}k token belge; "
+                             f"tip: {ub['tur']}"
+                             + (f", olgu derinliği %{int(ub['derinlik'] * 100)}"
+                                if ub.get("derinlik") is not None else ""))})
+
+    # Kademe ataması: sorunun kendisi açıkça vermediyse ölçüme dayalı haritadan gelir.
+    for soru in q:
+        soru.setdefault("kademe", kademe_ata(soru["key"]))
     return q
 
 
@@ -547,10 +1280,13 @@ def _extract_block(text, lang_hints=()):
 
 
 def grade_code(answer, func, tests):
-    """-> (passed, detay, output_info). output_info modelin her girdideki gerçek çıktısını içerir."""
+    """-> (puan 0-1, detay, output_info). Puan = geçen gizli test oranı.
+
+    KISMİ PUAN: 10 testin 9'unu geçen çözüm ile hiçbirini geçemeyen çözüm
+    aynı değildir; eskiden ikisi de 0 alıyordu."""
     code = _extract_block(answer, lang_hints=(f"def {func}", "def "))
     if f"def {func}" not in code:
-        return False, f"`{func}` fonksiyonu bulunamadı.", None
+        return 0.0, f"`{func}` fonksiyonu bulunamadı.", None
     harness = code + "\n\nimport json as _json\n_T = _json.loads(r'''" + json.dumps(tests) + "''')\n"
     harness += textwrap.dedent(f"""
         _out = []
@@ -569,25 +1305,25 @@ def grade_code(answer, func, tests):
     try:
         proc = subprocess.run([sys.executable, path], capture_output=True, text=True, timeout=15)
     except subprocess.TimeoutExpired:
-        return False, "Zaman aşımı (>15sn) — muhtemelen sonsuz döngü.", None
+        return 0.0, "Zaman aşımı (>15sn) — muhtemelen sonsuz döngü.", None
     finally:
         if os.path.exists(path):
             os.unlink(path)
     out = proc.stdout or ""
     if proc.returncode != 0 or "RESULTS" not in out:
-        return False, "Çalıştırma hatası:\n" + (proc.stderr or "")[:600], None
+        return 0.0, "Çalıştırma hatası:\n" + (proc.stderr or "")[:600], None
     try:
         outs = json.loads(out.split("RESULTS", 1)[1].strip())
     except Exception:
-        return False, "Çıktı ayrıştırılamadı.", None
+        return 0.0, "Çıktı ayrıştırılamadı.", None
     rows, okc = [], 0
     for (args, exp), o in zip(tests, outs):
         argstr = ", ".join(repr(a) for a in args)
         ok = bool(o.get("ok"))
         okc += 1 if ok else 0
         rows.append({"call": f"{func}({argstr})", "expected": repr(exp), "got": o.get("got", ""), "ok": ok})
-    passed = okc == len(tests)
-    return passed, f"{okc}/{len(tests)} test geçti.", {"type": "code", "rows": rows}
+    puan = SCORE.oran(okc, len(tests))
+    return puan, f"{okc}/{len(tests)} test geçti.", {"type": "code", "rows": rows}
 
 
 def seed_sql_db():
@@ -600,13 +1336,14 @@ def seed_sql_db():
 
 
 def grade_sql(answer, ref):
-    """-> (passed, detay, output_info). output_info beklenen ve modelin sorgu sonucunu içerir."""
+    """-> (puan 0-1, detay, output_info). Kısmi puan için bkz. SCORE.satir_kumesi_puani:
+    birebir doğru 1.0 · sıra farklı 0.9 · kısmi kesişim F1 ile ≤0.8 · yanlış 0.0."""
     con = seed_sql_db()
     try:
         expected = [tuple(r) for r in con.execute(ref).fetchall()]
     except Exception as e:
         con.close()
-        return False, f"Referans sorgu hatası: {e}", None
+        return 0.0, f"Referans sorgu hatası: {e}", None
     sql = _extract_block(answer, lang_hints=("select", "with"))
     statements = [s.strip() for s in sql.split(";") if s.strip()]
     sels = [s for s in statements if s.lower().startswith(("select", "with"))]
@@ -615,17 +1352,17 @@ def grade_sql(answer, ref):
     if "select" not in query.lower():
         con.close()
         info["got"] = "(geçerli SELECT sorgusu bulunamadı)"
-        return False, "Geçerli bir SELECT sorgusu bulunamadı.", info
+        return 0.0, "Geçerli bir SELECT sorgusu bulunamadı.", info
     try:
         got = [tuple(r) for r in con.execute(query).fetchall()]
     except Exception as e:
         con.close()
         info["got"] = f"HATA: {e}"
-        return False, f"SQL çalıştırma hatası: {e}", info
+        return 0.0, f"SQL çalıştırma hatası: {e}", info
     con.close()
     info["got"] = got
-    passed = got == expected
-    return passed, f"Sonuç {'doğru' if passed else 'yanlış'} ({len(got)} satır).", info
+    puan, aciklama = SCORE.satir_kumesi_puani(expected, got)
+    return puan, f"{aciklama} ({len(got)} satır döndü).", info
 
 
 def _to_float(tok):
@@ -659,12 +1396,13 @@ def grade_math(answer, expected, tol=0.5):
     info = {"type": "math", "expected": expected, "final": final, "found": cands[:15]}
     if final is not None:
         ok = abs(final - expected) < tol
-        return ok, f"#### sonucu: {final:g} (beklenen {expected:g}) → {'doğru' if ok else 'yanlış'}", info
+        return (1.0 if ok else 0.0), \
+            f"#### sonucu: {final:g} (beklenen {expected:g}) → {'doğru' if ok else 'yanlış'}", info
     # işaret yoksa daha hoşgörülü: herhangi bir sayı eşleşirse
     ok = any(abs(c - expected) < tol for c in cands)
     msg = (f"Doğru sonuç (≈{expected:g}) bulundu (#### işareti yoktu)." if ok
            else f"Beklenen {expected:g} bulunamadı. Görülen: {cands[:12]}")
-    return ok, msg, info
+    return (1.0 if ok else 0.0), msg, info
 
 
 def _norm_metin(s):
@@ -683,19 +1421,47 @@ def grade_text(answer, expected):
     c = _norm_metin(cand)
     ok = bool(e) and (c == e or e in c)
     info = {"type": "metin", "expected": expected, "got": cand[:80]}
-    return ok, f"Beklenen '{expected}', bulunan '{cand[:60]}' → {'doğru' if ok else 'yanlış'}", info
+    return (1.0 if ok else 0.0), \
+        f"Beklenen '{expected}', bulunan '{cand[:60]}' → {'doğru' if ok else 'yanlış'}", info
+
+
+def _norm_med(s):
+    s = str(s).lower().replace("₂", "2").replace("²", "2")
+    return re.sub(r"[^a-z0-9çğıöşü]", "", s)
+
+
+def grade_medikal(answer, gereken):
+    """gereken = [konsept1, konsept2, ...]; her konsept = kabul edilen varyant listesi.
+    Her konseptten en az bir varyant cevapta geçmeli (hepsi). `#### <terim>` varsa ondan, yoksa tüm cevaptan."""
+    marks = re.findall(r"####\s*(.+)", answer)
+    cand = marks[-1] if marks else answer
+    na = _norm_med(cand)
+    eksik = [konsept[0] for konsept in gereken if not any(_norm_med(v) in na for v in konsept)]
+    info = {"type": "medikal", "gereken": [k[0] for k in gereken], "got": cand.strip()[:90]}
+    puan = SCORE.oran(len(gereken) - len(eksik), len(gereken))
+    return puan, ("Tüm gerekli terimler bulundu." if not eksik
+                  else f"{len(gereken) - len(eksik)}/{len(gereken)} terim bulundu. Eksik: {eksik}"), info
 
 
 def grade_answer(question, text):
-    """Bir sorunun cevabını değerlendirir -> (passed|None, detay, output_info)."""
+    """Bir sorunun cevabını değerlendirir -> (passed|None, detay, output_info, puan|None).
+
+    `puan` 0-1 arası kısmi puandır; `passed` ondan türetilir (tam puan = geçti).
+    Eski rapor kodu `passed` ile çalışmaya devam eder."""
+    puan, detay, info = _puanla(question, text)
+    return SCORE.gecti_mi(puan), detay, info, puan
+
+
+def _puanla(question, text):
+    """Ham puanlama -> (puan|None, detay, output_info)."""
     g = question["grader"]
     if not g:
         return None, "", None
     gtype, spec = g
     if text.startswith("[İSTEK HATASI"):
-        return False, "Modelden cevap alınamadı.", None
+        return 0.0, "Modelden cevap alınamadı.", None
     if not text.strip():
-        return False, "Model boş/eksik cevap verdi (token limiti veya düşünme aşaması).", None
+        return 0.0, "Model boş/eksik cevap verdi (token limiti veya düşünme aşaması).", None
     try:
         if gtype == "code":
             return grade_code(text, spec["func"], spec["tests"])
@@ -705,8 +1471,17 @@ def grade_answer(question, text):
             return grade_math(text, spec["expected"])
         if gtype == "metin":
             return grade_text(text, spec["expected"])
+        if gtype == "medikal":
+            return grade_medikal(text, spec["gereken"])
+        if gtype == "talimat":
+            return GRADERS.grade_talimat(text, spec["kisitlar"])
+        if gtype == "json":
+            return GRADERS.grade_json(text, spec["sema"], spec["beklenen"])
+        if gtype == "halusinasyon":
+            return GRADERS.grade_halusinasyon(text, spec.get("yasak"),
+                                              soru_metni=question.get("prompt"))
     except Exception as e:
-        return False, f"Değerlendirici hatası: {e}", None
+        return 0.0, f"Değerlendirici hatası: {e}", None
     return None, "", None
 
 
@@ -736,6 +1511,9 @@ def correct_answer_text(question):
         return f"Doğru sonuç: {spec['expected']:g}\nÇözüm: {spec.get('cozum', '')}"
     if gtype == "metin":
         return f"Doğru cevap: {spec['expected']}\nÇözüm: {spec.get('cozum', '')}"
+    if gtype == "medikal":
+        terimler = " + ".join(k[0] for k in spec["gereken"])
+        return f"Doğru cevap (gerekli terim): {terimler}\nAçıklama: {spec.get('cozum', '')}"
     return ""
 
 
@@ -756,17 +1534,9 @@ def gpu_util_stats(gpu_summary):
 
 
 def category_summary(results):
-    out = {}
-    for cat in CATEGORIES:
-        items = [r for r in results if r["kategori"] == cat]
-        graded = [r for r in items if r["passed"] is not None]
-        out[cat] = {
-            "passed": sum(1 for r in graded if r["passed"]),
-            "graded": len(graded),
-            "items": len(items),
-            "time": sum(r["total"] for r in items),
-        }
-    return out
+    """Kategori özeti. Ağırlıklı puan/kademe/kararlılık hesabı bench.scoring'de;
+    `passed`/`graded`/`items`/`time` alanları eski rapor kodu için korunur."""
+    return SCORE.kategori_ozeti(results, CATEGORIES)
 
 
 # ===========================================================================
@@ -891,12 +1661,16 @@ class GpuMonitor:
 # ===========================================================================
 
 def ask_llm(base_url, model_id, prompt, temperature, max_tokens, timeout=600, no_think=False,
-            repeat_penalty=1.1):
+            repeat_penalty=1.1, profil=None):
+    """`profil` verilirse örnekleme parametreleri ONDAN gelir (modelin kendi kartı);
+    verilmezse eski davranış (temperature + repeat_penalty argümanları) korunur."""
     url = base_url + "/v1/chat/completions"
     payload = {"model": model_id, "messages": [{"role": "user", "content": prompt}],
                "temperature": temperature, "max_tokens": max_tokens, "stream": True,
                "repeat_penalty": repeat_penalty, "stream_options": {"include_usage": True}}
-    if no_think:
+    if profil:
+        payload.update(PROFIL.ornekleme_alanlari(profil, no_think=no_think))
+    elif no_think:
         # Düşünmeyi (reasoning) destekleyen jinja şablonları için
         payload["chat_template_kwargs"] = {"enable_thinking": False}
     t0 = time.perf_counter()
@@ -1134,7 +1908,7 @@ def build_pdf(out_path, model_info, gpu_summary, results, run_meta):
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fafafa")])]))
     el.append(kt)
     el.append(Paragraph("<b>Açıklama:</b> Ortalama hız = toplam üretilen token / toplam üretim süresi · "
-                        "Tepe VRAM = iki GPU'da test sırasında görülen en yüksek VRAM toplamı · "
+                        "Tepe VRAM = test sırasında görülen en yüksek VRAM · "
                         "GPU kullanımı = işlemcinin meşguliyet yüzdesi (ortalama ve tepe).", S["SMALL"]))
 
     # Detay (kategoriye göre)
@@ -1218,42 +1992,101 @@ def effective_max_tokens(args, n_ctx):
     return max(2048, n - 2048)   # prompt + şablon için küçük rezerv
 
 
-def run_questions(base_url, model_id, args, max_tokens, gpu=None, log=print):
-    """Tüm soruları sorar, değerlendirir; sonuç listesi döndürür. max_tokens: kullanılacak limit."""
+def _tek_deneme(base_url, model_id, q, args, max_tokens, no_think, rep, profil, n_ctx=None):
+    """Bir sorunun TEK denemesi -> ham kayıt (puanlanmış). avg@k bunu k kez çağırır.
+
+    `n_ctx` verilir ve soru sığmazsa istek HİÇ gönderilmez: puan None kalır,
+    `baglam_yetersiz` işaretlenir. Sığmayan soruya 0 vermek, yetenek eksikliği
+    ile donanım sınırını karıştırırdı."""
+    # Soru kendi cevap bütçesini dayatabilir. Uzun bağlamda varsayılan
+    # (n_ctx - 2048) istenirse istek bağlamı taşırır: 29k belge + 30k cevap
+    # bütçesi 32k'ya sığmaz ve sunucu hata döner.
+    max_tokens = min(max_tokens, q["max_tokens"]) if q.get("max_tokens") else max_tokens
+    gereken = q.get("gereken_token")
+    if gereken and n_ctx and gereken > int(n_ctx):
+        return {"text": f"[BAĞLAM YETERSİZ: soru ~{gereken} token, model context {n_ctx}]",
+                "ttft": 0, "total": 0, "completion_tokens": 0, "tokens_per_sec": 0,
+                "passed": None, "puan": None, "kesildi": False, "baglam_yetersiz": True,
+                "grade_detail": f"Soru bu modelin bağlamına sığmıyor "
+                                f"(~{gereken} token > {n_ctx}). Puanlanmadı.",
+                "grade_output": None}
+    if q.get("agentic"):
+        # Durum tutan araçlar (ör. "ilk çağrıda hata ver") avg@k'da her deneme
+        # için SIFIRLANMALI; yoksa ikinci deneme sahte kolaylık kazanır.
+        sifirla = q["agentic"].get("sifirla")
+        if callable(sifirla):
+            sifirla()
+        try:
+            ar = agentic_loop(base_url, model_id, q["agentic"], args.temperature, max_tokens,
+                              no_think=no_think, repeat_penalty=rep, profil=profil)
+        except Exception as e:
+            ar = {"text": f"[İSTEK HATASI: {e}]", "turns": 0, "tool_calls": 0,
+                  "read_before_answer": False, "transcript": [], "total": 0, "ttft": 0,
+                  "completion_tokens": 0, "tokens_per_sec": 0}
+        passed, detail, outinfo, puan = grade_answer(q, ar["text"])
+        return {"text": ar["text"] or "[boş]", "ttft": ar["ttft"], "total": ar["total"],
+                "completion_tokens": ar["completion_tokens"], "tokens_per_sec": ar["tokens_per_sec"],
+                "passed": passed, "puan": puan, "kesildi": False,
+                "grade_detail": detail, "grade_output": outinfo,
+                "agentic_info": {"turns": ar["turns"], "tool_calls": ar["tool_calls"],
+                                 "read_before": ar["read_before_answer"]}}
+    try:
+        resp = ask_llm(base_url, model_id, q["prompt"], args.temperature, max_tokens,
+                       no_think=no_think, repeat_penalty=rep, profil=profil)
+    except Exception as e:
+        resp = {"text": f"[İSTEK HATASI: {e}]", "reasoning": "", "finish_reason": "error",
+                "ttft": 0, "total": 0, "completion_tokens": 0, "tokens_per_sec": 0}
+    # NOT: yerel ad `puanlanacak` — eskiden `grade_text` idi ve aynı adlı
+    # grader fonksiyonunu gölgeliyordu (sessiz tuzak).
+    puanlanacak, display = normalize_answer(resp, max_tokens)
+    passed, detail, outinfo, puan = grade_answer(q, puanlanacak)
+    return {**resp, "text": display, "passed": passed, "puan": puan,
+            "kesildi": resp.get("finish_reason") == "length",
+            "grade_detail": detail, "grade_output": outinfo}
+
+
+def _denemeleri_birlestir(q, denemeler):
+    """k denemeyi tek kayda indirger.
+
+    Gösterilen metin İLK denemenindir (rapor okunabilir kalsın); puan üçünün
+    ortalaması, kararlılık yayılımdan gelir. Süre/token TOPLAMdır — avg@k'nın
+    gerçek maliyeti görünsün diye."""
+    birlesik = SCORE.birlestir([d["puan"] for d in denemeler])
+    ilk = denemeler[0]
+    toplam_sure = sum(d.get("total") or 0 for d in denemeler)
+    toplam_token = sum(d.get("completion_tokens") or 0 for d in denemeler)
+    return {**q, **ilk,
+            "puan": birlesik["puan"],
+            "passed": SCORE.gecti_mi(birlesik["puan"]),
+            "kararlilik": birlesik["kararlilik"],
+            "deneme_puanlari": birlesik["denemeler"],
+            "k": birlesik["k"],
+            "kesildi": any(d.get("kesildi") for d in denemeler),
+            "kesilen_deneme": sum(1 for d in denemeler if d.get("kesildi")),
+            "total": toplam_sure,
+            "completion_tokens": toplam_token,
+            "tokens_per_sec": (toplam_token / toplam_sure) if toplam_sure else 0}
+
+
+def run_questions(base_url, model_id, args, max_tokens, gpu=None, log=print, profil=None,
+                  n_ctx=None):
+    """Tüm soruları sorar, değerlendirir; sonuç listesi döndürür.
+
+    `args.tekrar` > 1 ise her puanlı soru k kez sorulup ortalanır (avg@k).
+    Puanlanmayan (yaratıcılık) sorular her zaman 1 kez sorulur."""
     no_think = getattr(args, "no_think", False)
     rep = getattr(args, "repeat_penalty", 1.1)
+    tekrar = max(1, int(getattr(args, "tekrar", 1) or 1))
     results = []
     for q in QUESTIONS:
-        log(f"   -> {q['baslik']}")
-        if q.get("agentic"):
-            # Çok-turlu araç döngüsü (model araç çağırır, biz çalıştırıp geri besleriz)
-            try:
-                ar = agentic_loop(base_url, model_id, q["agentic"], args.temperature, max_tokens,
-                                  no_think=no_think, repeat_penalty=rep)
-            except Exception as e:
-                ar = {"text": f"[İSTEK HATASI: {e}]", "turns": 0, "tool_calls": 0,
-                      "read_before_answer": False, "transcript": [], "total": 0, "ttft": 0,
-                      "completion_tokens": 0, "tokens_per_sec": 0}
-            passed, detail, outinfo = grade_answer(q, ar["text"])
-            disp = ar["text"] or "[boş]"
-            results.append({**q, "text": disp, "ttft": ar["ttft"], "total": ar["total"],
-                            "completion_tokens": ar["completion_tokens"],
-                            "tokens_per_sec": ar["tokens_per_sec"], "passed": passed,
-                            "grade_detail": detail, "grade_output": outinfo,
-                            "agentic_info": {"turns": ar["turns"], "tool_calls": ar["tool_calls"],
-                                             "read_before": ar["read_before_answer"]}})
-            continue
-        try:
-            resp = ask_llm(base_url, model_id, q["prompt"], args.temperature, max_tokens,
-                           no_think=no_think, repeat_penalty=rep)
-        except Exception as e:
-            resp = {"text": f"[İSTEK HATASI: {e}]", "reasoning": "", "finish_reason": "error",
-                    "ttft": 0, "total": 0, "completion_tokens": 0, "tokens_per_sec": 0}
-        grade_text, display = normalize_answer(resp, max_tokens)
-        passed, detail, outinfo = grade_answer(q, grade_text)
-        results.append({**q, **resp, "text": display, "passed": passed,
-                        "grade_detail": detail, "grade_output": outinfo})
+        k = tekrar if q.get("grader") else 1
+        log(f"   -> {q['baslik']}" + (f"  (×{k})" if k > 1 else ""))
+        denemeler = [_tek_deneme(base_url, model_id, q, args, max_tokens, no_think, rep,
+                                 profil, n_ctx=n_ctx)
+                     for _ in range(k)]
+        results.append(_denemeleri_birlestir(q, denemeler))
     return results
+
 
 
 def run_live(args):
@@ -1263,15 +2096,21 @@ def run_live(args):
     print(f"   Model: {info['name']}")
     mt = effective_max_tokens(args, info["params"].get("n_ctx"))
     print(f"   max_tokens: {mt}")
+    profil = PROFIL.profil_bul(info["name"], deterministik=args.deterministik)
+    print(f"   profil: {PROFIL.ozet(profil)}")
+    if args.tekrar > 1:
+        print(f"   tekrar: her puanlı soru ×{args.tekrar} (avg@{args.tekrar})")
     gpu = GpuMonitor(interval=args.gpu_interval)
     gpu.start()
     try:
-        results = run_questions(base, info["served_id"], args, mt)
+        results = run_questions(base, info["served_id"], args, mt, profil=profil,
+                                n_ctx=info["params"].get("n_ctx"))
     finally:
         gpu.stop()
     ts = _dt.datetime.now()
     run_meta = {"url": base, "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
-                "temperature": args.temperature, "max_tokens": mt}
+                "temperature": args.temperature, "max_tokens": mt,
+                "profil": PROFIL.ozet(profil), "tekrar": args.tekrar}
     # Her çalıştırmada Model_raporları altında YENİ çalışma klasörü (çakışmaya karşı bağışık)
     base = os.path.join(args.out_dir, f"calisma_{ts.strftime('%Y%m%d_%H%M%S')}")
     run_dir, k = base, 2
@@ -1301,6 +2140,11 @@ def reference_answer(q):
         return f"... hesap ...\n#### {spec['expected']:g}"
     if gtype == "metin":
         return f"... çıkarım ...\n#### {spec['expected']}"
+    if gtype == "medikal":
+        return "#### " + " ve ".join(k[0] for k in spec["gereken"])
+    if gtype in ("talimat", "json", "halusinasyon"):
+        # Bu branşlarda referans cevap sorunun kendisiyle birlikte tanımlıdır.
+        return spec["cozum"]
     return ""
 
 
@@ -1310,18 +2154,20 @@ def run_selftest(args):
     fails = 0
     for q in QUESTIONS:
         text = reference_answer(q)
-        passed, detail, outinfo = grade_answer(q, text)
+        passed, detail, outinfo, puan = grade_answer(q, text)
         if q["grader"] and not passed:
             fails += 1
             print(f"   ✗ {q['baslik']}: referans GEÇMEDİ! {detail[:80]}")
         results.append({**q, "text": text, "ttft": 0.1, "total": 1.2, "completion_tokens": 40,
-                        "tokens_per_sec": 25.0, "passed": passed, "grade_detail": detail,
+                        "tokens_per_sec": 25.0, "passed": passed, "puan": puan,
+                        "kararlilik": None, "kesildi": False, "grade_detail": detail,
                         "grade_output": outinfo})
     # bir de kasıtlı yanlış (kod_1) -> KALMALI
     wrongq = next((x for x in QUESTIONS if x["key"] == "kod_1"), None)
     if wrongq:
-        wp, _, _ = grade_answer(wrongq, "```python\ndef roman_sayi(s):\n    return 0\n```")
-        print(f"   kasıtlı yanlış kod_1 -> passed={wp} (False olmalı) {'✓' if wp is False else '✗'}")
+        wp, _, _, wpuan = grade_answer(wrongq, "```python\ndef roman_sayi(s):\n    return 0\n```")
+        print(f"   kasıtlı yanlış kod_1 -> passed={wp} puan={wpuan:.2f} "
+              f"(False olmalı) {'✓' if wp is False else '✗'}")
     print(f"   Referans sonucu: {len([r for r in results if r['grader'] and r['passed']])}"
           f"/{len([r for r in results if r['grader']])} GEÇTİ, {fails} hata.")
     info = {"name": "SELFTEST", "model_path": None, "params": {"n_ctx": 8192}, "served_id": "selftest"}
@@ -1351,6 +2197,12 @@ def main():
                     help="Yanıt başına maksimum token. 0 = OTOMATİK: bağlamın izin verdiği maksimum (n_ctx - 2048)")
     ap.add_argument("--no-think", action="store_true",
                     help="Düşünmeyi (reasoning) kapat — destekleyen modeller için (enable_thinking=false)")
+    ap.add_argument("--tekrar", type=int, default=1, metavar="K",
+                    help="Her puanlı soru K kez sorulup ortalanır (avg@K). Kart ayarıyla "
+                         "(rastgele örnekleme) koşarken gürültüyü bastırır. Varsayılan 1.")
+    ap.add_argument("--deterministik", action="store_true",
+                    help="Model profilini yok say, eski rejimle koş (temperature=0, greedy). "
+                         "Karşılaştırılabilir taban ölçümü için.")
     ap.add_argument("--gpu-interval", type=float, default=0.5)
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()

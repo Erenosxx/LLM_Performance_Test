@@ -4,10 +4,43 @@ Lokal LLM'leri (llama-server / OpenAI-uyumlu `/v1` endpoint) sabit bir soru seti
 test eder, yanıt sürelerini ve GPU kullanımını ölçer, kod/SQL/matematik cevaplarını
 **otomatik puanlar** ve PDF rapor üretir.
 
-## Kurulum
+## Hızlı başlangıç
+
+Gereken tek yapılandırma **iki yol**: modellerin bulunduğu klasör ve `llama-server` ikilisi.
+
 ```bash
+# 1) bağımlılıklar
 pip install -r requirements.txt
+
+# 2) makineye özel yolları gir (bu dosya .gitignore'dadır, depoya girmez)
+cp ayarlar_yerel.ornek.py ayarlar_yerel.py
+$EDITOR ayarlar_yerel.py         # LLM_MODELS_DIR ve LLAMA_SERVER
+
+# 3) hangi modeller test edilecek: models_config.py -> MODELS listesi
+#    (klasördeki .gguf dosya adlarını yaz)
+
+# 4) çalıştır — launch/ boşsa açılış betikleri otomatik üretilir
+python run_models.py
 ```
+
+Yolları dosya yerine ortam değişkeniyle de verebilirsin (öncelikli):
+
+```bash
+export LLM_MODELS_DIR=/veri/modeller
+export LLAMA_SERVER=~/llama.cpp/build/bin/llama-server
+```
+
+Yol eksik/yanlışsa program ne yapılacağını söyleyip durur, yarıda kalmaz.
+
+**Kurulum doğru mu?** Model ve sunucu olmadan sınamak için:
+
+```bash
+python run_models.py --combined-selftest   # sahte veriyle tüm puanlama + PDF zinciri
+python -m pytest bench/ -q                 # grader birim testleri
+```
+
+> `llama-server` bu projenin parçası değildir; [llama.cpp](https://github.com/ggml-org/llama.cpp)
+> derlenip yolu gösterilir. Model `.gguf` dosyaları da ayrıca indirilir.
 
 ## Soru seti (her model için SABİT)
 | Kategori | Soru sayısı | Otomatik puanlama |
@@ -18,6 +51,7 @@ pip install -r requirements.txt
 | Matematik | 8 (kolay→çok zor) | Evet — bilinen sonuçla kıyas |
 | **Hata Ayıklama** (branş) | 9 (kolay→çok sinsi) | Evet — BOZUK kod verilir, düzeltilmiş kod çalıştırılıp test edilir |
 | **Agentic** (branş) | 6 (3 orta + 3 çok zor) | Evet — çok-turlu ARAÇ kullanımı; model veriyi toplayıp doğru çıkarımı yapmalı |
+| **Medikal** (branş) | 8 | Evet — cerrahi aşama/ekipman; gerekli tıbbi terim(ler) eş anlamlılarıyla aranır |
 
 > **Tekrarlanabilirlik:** Varsayılan `temperature=0` (greedy) + `repeat_penalty=1.1` → aynı model aynı soruda HEP aynı cevabı verir (adil/deterministik kıyas). Eskiden temp 0.3 olduğundan skorlar tur-tur değişiyordu.
 
@@ -51,8 +85,8 @@ pip install -r requirements.txt
 ## A) Tek model testi
 ```bash
 # modeli aç (örnek)
-~/Desktop/llama.cpp/build/bin/llama-server -m <model.gguf> -c 8192 -ngl 99 \
-  -sm layer --host 0.0.0.0 --port 8080 --jinja
+"$LLAMA_SERVER" -m <model.gguf> -c 32768 -ngl 99 \
+  -sm none -fa on --host 127.0.0.1 --port 8080 --jinja
 # test et
 python llm_perf_test.py --url http://localhost:8080
 ```
@@ -90,9 +124,12 @@ Model_raporları/
 Tek-model tester (`llm_perf_test.py`) de aynı yapıyı kullanır
 (`Model_raporları/calisma_<tarih-saat>/model_raporlari/`).
 
-- **GPU stratejisi (hız için):** ≤17 GB modeller **TEK GPU**'da açılır (bölme/senkron yükü yok → daha hızlı + GPU daha dolu); tek karta sığmayanlar **çift GPU**'ya bölünür (`-sm layer`). Tek GPU'da açılmazsa (32k KV ile sığmazsa) otomatik çift GPU'ya düşer.
+- **GPU:** launcher'lar tek GPU için üretilir (`CUDA_VISIBLE_DEVICES=0`, `-sm none`, `-fa on`).
+  Birden çok kart kullanacaksan `launch/open_*.sh` dosyalarını elle düzenle — kod onları
+  kendiliğinden değiştirmez.
 - Test edilecek modeller: **`launch/` içindeki `.sh` dosyaları** (seçim için bunları taşı).
-  Tam model havuzu + yollar `models_config.py`'de tanımlı (launcher'lar buradan üretilir).
+  Model havuzu `models_config.py` -> `MODELS`, makineye özel yollar `ayarlar_yerel.py`
+  (launcher'lar bu ikisinden üretilir; `launch/*.sh` depoya girmez).
 - Bir model açılmazsa **durmaz**, hatayı `logs/<model>.log`'a yazıp sonrakine geçer
   (PDF'te "AÇILMADI"). Aynı model adı tekrarsa atlanır.
 - `launch/open_<model>.sh` — her modeli **manuel** açmak için de kullanabilirsin.
@@ -116,8 +153,10 @@ Kod sorularında modellere "açıklama/yorum yazma, sadece kodu ver" talimatı v
 ## Parametreler (ortak)
 | Argüman | Varsayılan | Açıklama |
 |---------|-----------|----------|
-| `--temperature` | `0.3` | Tüm sorularda sabit (adil kıyas) |
-| `--max-tokens` | `8192` | Yanıt başına maksimum token (düşünen modeller için yüksek) |
+| `--temperature` | `0.0` | Greedy — aynı model aynı soruda hep aynı cevabı verir |
+| `--repeat-penalty` | `1.1` | Model kartı önerisi (tekrar bozulmasını önler) |
+| `--max-tokens` | `0` (otomatik) | 0 = bağlamın izin verdiği en yüksek değer (`n_ctx - 2048`) |
+| `--tekrar K` | `1` | Her puanlı soru K kez sorulur, puan ortalanır (avg@K) |
 | `--no-think` | kapalı | Düşünmeyi (reasoning) kapat (`enable_thinking=false`) |
 | `--gpu-interval` | `0.5` | GPU örnekleme aralığı (sn) |
 | `--load-timeout` | `300` | (orkestratör) model yüklenme bekleme süresi |
