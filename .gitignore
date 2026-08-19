@@ -11,3 +11,6 @@ __pycache__/
 
 # Örnek/geçici PDF'ler
 *.pdf
+
+# Koşu logları (çıktı)
+kosu_*.log

@@ -48,13 +48,25 @@ except ImportError:
     sys.exit("HATA: 'requests' kurulu değil ->  pip install requests")
 
 from agentic import AGENTIC_TASKS, agentic_loop
+from bench import scoring as SCORE
+from bench import profiles as PROFIL
+from bench import graders as GRADERS
+from bench.banks.talimat import TALIMAT_SORULARI
+from bench.banks.json_cikti import JSON_SORULARI
+from bench.banks.halusinasyon import HALUSINASYON_SORULARI, REFERANS_RET
+from bench.banks.turkce import TURKCE_SORULARI
+from bench.banks.agentic_zor import gorevler as AGENTIC_ZOR_GOREVLER
+from bench.banks.uzun_baglam import (UZUN_BAGLAM_SORULARI,
+                                     TOKEN_KELIME_ORANI as UB_ORAN,
+                                     CEVAP_BUTCESI as UB_CEVAP)
 
 
 # ===========================================================================
 #  SORULAR
 # ===========================================================================
 
-CATEGORIES = ["Yaratıcılık", "Kod", "SQL", "Matematik", "Hata Ayıklama", "Agentic", "Medikal"]
+CATEGORIES = ["Yaratıcılık", "Kod", "SQL", "Matematik", "Hata Ayıklama", "Agentic", "Medikal",
+              "Talimat", "JSON", "Halüsinasyon", "Türkçe", "Uzun Bağlam"]
 
 LANG = "tr"   # "tr" veya "en" — use_language() ile değiştirilir (run_models_En.py İngilizce kullanır)
 
@@ -1102,6 +1114,26 @@ def use_language(lang):
     return QUESTIONS
 
 
+# --- Zorluk kademeleri -----------------------------------------------------
+# ÖLÇÜMLE atandı, tahminle değil. 17 Ağustos 2026 koşusunda (calisma_20260817_173317)
+# dört model — gemma-4-26B-A4B, gemma-4-31B-qat, Qwen3.5-27B, Qwen3.8-27B —
+# 80 puanlı sorunun 73'ünü de geçti. Bu sınıf için o sorular tanım gereği KOLAY;
+# taban kontrolü olarak kalırlar ama ağırlıkları düşüktür.
+# Aşağıdakiler o koşuda gerçekten ayrım üretmiş (ya da kimsenin geçemediği) sorular.
+KADEME_ISTISNA = {
+    "sql_5": "zor", "sql_7": "zor", "sql_13": "zor",      # modelleri ayırdı
+    "medikal_3": "zor", "medikal_6": "zor",               # modelleri ayırdı
+    "hata_5": "zor",                                      # modelleri ayırdı
+    "kod_8": "zor",                                       # dördü de kaldı (kelime_merdiveni)
+}
+VARSAYILAN_MEVCUT_KADEME = "kolay"
+
+
+def kademe_ata(key):
+    """Bir sorunun zorluk kademesi. Yeni branşlar kendi kademesini açıkça verir."""
+    return KADEME_ISTISNA.get(key, VARSAYILAN_MEVCUT_KADEME)
+
+
 def build_questions():
     """Tüm soruları tek bir düz listede üretir (kategori, seviye, prompt, grader). LANG'a göre TR/EN."""
     en = (LANG == "en")
@@ -1162,14 +1194,70 @@ def build_questions():
                   "grader": ("medikal", {"gereken": md["gereken"], "cozum": md["cozum"]}),
                   "kriter": "Gerekli tıbbi terim(ler) cevapta geçmeli."})
     # Agentic branşı (çok-turlu araç kullanımı; loop run_questions'ta sürülür)
-    for t in AGENTIC_TASKS:
+    # Mevcut 11 görev + zor kademe (bozuk araç / çeldirici / kirli veri).
+    for t in list(AGENTIC_TASKS) + AGENTIC_ZOR_GOREVLER():
         gtype = t["grader_type"]  # "math" -> sayı, "metin" -> isim eşleşmesi
         spec = {"expected": t["expected"], "cozum": t["cozum"]}
         q.append({"key": t["key"], "kategori": "Agentic", "seviye": t["seviye"],
                   "baslik": t["baslik"], "prompt": (t.get("user_en", t["user"]) if en else t["user"]),
                   "agentic": t,
                   "grader": (gtype, spec),
+                  "kademe": t.get("kademe", "kolay"),
                   "kriter": "Araçlarla veri toplayıp doğru çıkarımı yapan model geçer."})
+    # --- YENİ BRANŞLAR (bench/banks/) ---------------------------------------
+    # Talimata uyma: bileşik, makineyle denetlenebilir kısıtlar.
+    for t in TALIMAT_SORULARI:
+        q.append({"key": f"talimat_{t['seviye']}", "kategori": "Talimat",
+                  "seviye": t["seviye"], "kademe": t["kademe"],
+                  "baslik": f"Talimat S{t['seviye']}", "prompt": t["prompt"],
+                  "grader": ("talimat", {"kisitlar": t["kisitlar"], "cozum": t["cozum"]}),
+                  "kriter": f"{len(t['kisitlar'])} kısıt tek tek denetlenir; "
+                            f"puan = sağlanan / toplam."})
+    # Yapılandırılmış çıktı: geçerli JSON + şema + alan değerleri.
+    for j in JSON_SORULARI:
+        q.append({"key": f"json_{j['seviye']}", "kategori": "JSON",
+                  "seviye": j["seviye"], "kademe": j["kademe"],
+                  "baslik": f"JSON S{j['seviye']}", "prompt": j["prompt"],
+                  "grader": ("json", {"sema": j["sema"], "beklenen": j["beklenen"],
+                                      "cozum": j["cozum"]}),
+                  "kriter": "Geçerli JSON (0,30) + şema uyumu (0,40) + alan değerleri (0,30)."})
+    # Halüsinasyon direnci: doğru davranış BİLMEDİĞİNİ söylemek.
+    for h in HALUSINASYON_SORULARI:
+        q.append({"key": f"halusinasyon_{h['seviye']}", "kategori": "Halüsinasyon",
+                  "seviye": h["seviye"], "kademe": h["kademe"],
+                  "baslik": f"Halüsinasyon S{h['seviye']} ({h['tur']})", "prompt": h["prompt"],
+                  "grader": ("halusinasyon", {"yasak": h["yasak"], "cozum": REFERANS_RET}),
+                  "kriter": "Belirsizlik belirtti + uydurma spesifik veri üretmedi -> 1,0; "
+                            "belirtti ama uydurdu -> 0,5; kendinden emin uydurdu -> 0."})
+
+    # Türkçe tıbbi terim: WP6'nın gerçek ASR bozulmalarından türetildi.
+    # `talimat` grader'ı kullanır (katı tek satırlık biçim -> mekanik denetim).
+    for tr in TURKCE_SORULARI:
+        q.append({"key": f"turkce_{tr['seviye']}", "kategori": "Türkçe",
+                  "seviye": tr["seviye"], "kademe": tr["kademe"],
+                  "baslik": f"Türkçe S{tr['seviye']} ({tr['tur']})", "prompt": tr["prompt"],
+                  "grader": ("talimat", {"kisitlar": tr["kisitlar"], "cozum": tr["cozum"]}),
+                  "kriter": tr["gerekce"]})
+
+    # Uzun bağlam: belgeler programatik ve deterministik üretilir.
+    # `gereken_token`: sığmayan soru YANLIŞ sayılmaz, "bağlam yetersiz" olarak
+    # ayrı işlenir (bkz. run_questions) — erişilebilen tavan bir yetenek metriğidir.
+    for ub in UZUN_BAGLAM_SORULARI:
+        q.append({"key": f"uzunbaglam_{ub['seviye']}", "kategori": "Uzun Bağlam",
+                  "seviye": ub["seviye"], "kademe": ub["kademe"],
+                  "baslik": f"Uzun Bağlam S{ub['seviye']} ({ub['tur']})",
+                  "prompt": ub["prompt"],
+                  "gereken_token": int(len(ub["prompt"].split()) * UB_ORAN) + UB_CEVAP,
+                  "max_tokens": UB_CEVAP,
+                  "grader": ("talimat", {"kisitlar": ub["kisitlar"], "cozum": ub["cozum"]}),
+                  "kriter": (f"~{int(len(ub['prompt'].split()) * 1.4 / 1000)}k token belge; "
+                             f"tip: {ub['tur']}"
+                             + (f", olgu derinliği %{int(ub['derinlik'] * 100)}"
+                                if ub.get("derinlik") is not None else ""))})
+
+    # Kademe ataması: sorunun kendisi açıkça vermediyse ölçüme dayalı haritadan gelir.
+    for soru in q:
+        soru.setdefault("kademe", kademe_ata(soru["key"]))
     return q
 
 
@@ -1192,10 +1280,13 @@ def _extract_block(text, lang_hints=()):
 
 
 def grade_code(answer, func, tests):
-    """-> (passed, detay, output_info). output_info modelin her girdideki gerçek çıktısını içerir."""
+    """-> (puan 0-1, detay, output_info). Puan = geçen gizli test oranı.
+
+    KISMİ PUAN: 10 testin 9'unu geçen çözüm ile hiçbirini geçemeyen çözüm
+    aynı değildir; eskiden ikisi de 0 alıyordu."""
     code = _extract_block(answer, lang_hints=(f"def {func}", "def "))
     if f"def {func}" not in code:
-        return False, f"`{func}` fonksiyonu bulunamadı.", None
+        return 0.0, f"`{func}` fonksiyonu bulunamadı.", None
     harness = code + "\n\nimport json as _json\n_T = _json.loads(r'''" + json.dumps(tests) + "''')\n"
     harness += textwrap.dedent(f"""
         _out = []
@@ -1214,25 +1305,25 @@ def grade_code(answer, func, tests):
     try:
         proc = subprocess.run([sys.executable, path], capture_output=True, text=True, timeout=15)
     except subprocess.TimeoutExpired:
-        return False, "Zaman aşımı (>15sn) — muhtemelen sonsuz döngü.", None
+        return 0.0, "Zaman aşımı (>15sn) — muhtemelen sonsuz döngü.", None
     finally:
         if os.path.exists(path):
             os.unlink(path)
     out = proc.stdout or ""
     if proc.returncode != 0 or "RESULTS" not in out:
-        return False, "Çalıştırma hatası:\n" + (proc.stderr or "")[:600], None
+        return 0.0, "Çalıştırma hatası:\n" + (proc.stderr or "")[:600], None
     try:
         outs = json.loads(out.split("RESULTS", 1)[1].strip())
     except Exception:
-        return False, "Çıktı ayrıştırılamadı.", None
+        return 0.0, "Çıktı ayrıştırılamadı.", None
     rows, okc = [], 0
     for (args, exp), o in zip(tests, outs):
         argstr = ", ".join(repr(a) for a in args)
         ok = bool(o.get("ok"))
         okc += 1 if ok else 0
         rows.append({"call": f"{func}({argstr})", "expected": repr(exp), "got": o.get("got", ""), "ok": ok})
-    passed = okc == len(tests)
-    return passed, f"{okc}/{len(tests)} test geçti.", {"type": "code", "rows": rows}
+    puan = SCORE.oran(okc, len(tests))
+    return puan, f"{okc}/{len(tests)} test geçti.", {"type": "code", "rows": rows}
 
 
 def seed_sql_db():
@@ -1245,13 +1336,14 @@ def seed_sql_db():
 
 
 def grade_sql(answer, ref):
-    """-> (passed, detay, output_info). output_info beklenen ve modelin sorgu sonucunu içerir."""
+    """-> (puan 0-1, detay, output_info). Kısmi puan için bkz. SCORE.satir_kumesi_puani:
+    birebir doğru 1.0 · sıra farklı 0.9 · kısmi kesişim F1 ile ≤0.8 · yanlış 0.0."""
     con = seed_sql_db()
     try:
         expected = [tuple(r) for r in con.execute(ref).fetchall()]
     except Exception as e:
         con.close()
-        return False, f"Referans sorgu hatası: {e}", None
+        return 0.0, f"Referans sorgu hatası: {e}", None
     sql = _extract_block(answer, lang_hints=("select", "with"))
     statements = [s.strip() for s in sql.split(";") if s.strip()]
     sels = [s for s in statements if s.lower().startswith(("select", "with"))]
@@ -1260,17 +1352,17 @@ def grade_sql(answer, ref):
     if "select" not in query.lower():
         con.close()
         info["got"] = "(geçerli SELECT sorgusu bulunamadı)"
-        return False, "Geçerli bir SELECT sorgusu bulunamadı.", info
+        return 0.0, "Geçerli bir SELECT sorgusu bulunamadı.", info
     try:
         got = [tuple(r) for r in con.execute(query).fetchall()]
     except Exception as e:
         con.close()
         info["got"] = f"HATA: {e}"
-        return False, f"SQL çalıştırma hatası: {e}", info
+        return 0.0, f"SQL çalıştırma hatası: {e}", info
     con.close()
     info["got"] = got
-    passed = got == expected
-    return passed, f"Sonuç {'doğru' if passed else 'yanlış'} ({len(got)} satır).", info
+    puan, aciklama = SCORE.satir_kumesi_puani(expected, got)
+    return puan, f"{aciklama} ({len(got)} satır döndü).", info
 
 
 def _to_float(tok):
@@ -1304,12 +1396,13 @@ def grade_math(answer, expected, tol=0.5):
     info = {"type": "math", "expected": expected, "final": final, "found": cands[:15]}
     if final is not None:
         ok = abs(final - expected) < tol
-        return ok, f"#### sonucu: {final:g} (beklenen {expected:g}) → {'doğru' if ok else 'yanlış'}", info
+        return (1.0 if ok else 0.0), \
+            f"#### sonucu: {final:g} (beklenen {expected:g}) → {'doğru' if ok else 'yanlış'}", info
     # işaret yoksa daha hoşgörülü: herhangi bir sayı eşleşirse
     ok = any(abs(c - expected) < tol for c in cands)
     msg = (f"Doğru sonuç (≈{expected:g}) bulundu (#### işareti yoktu)." if ok
            else f"Beklenen {expected:g} bulunamadı. Görülen: {cands[:12]}")
-    return ok, msg, info
+    return (1.0 if ok else 0.0), msg, info
 
 
 def _norm_metin(s):
@@ -1328,7 +1421,8 @@ def grade_text(answer, expected):
     c = _norm_metin(cand)
     ok = bool(e) and (c == e or e in c)
     info = {"type": "metin", "expected": expected, "got": cand[:80]}
-    return ok, f"Beklenen '{expected}', bulunan '{cand[:60]}' → {'doğru' if ok else 'yanlış'}", info
+    return (1.0 if ok else 0.0), \
+        f"Beklenen '{expected}', bulunan '{cand[:60]}' → {'doğru' if ok else 'yanlış'}", info
 
 
 def _norm_med(s):
@@ -1343,21 +1437,31 @@ def grade_medikal(answer, gereken):
     cand = marks[-1] if marks else answer
     na = _norm_med(cand)
     eksik = [konsept[0] for konsept in gereken if not any(_norm_med(v) in na for v in konsept)]
-    ok = not eksik
     info = {"type": "medikal", "gereken": [k[0] for k in gereken], "got": cand.strip()[:90]}
-    return ok, ("Tüm gerekli terimler bulundu." if ok else f"Eksik: {eksik}"), info
+    puan = SCORE.oran(len(gereken) - len(eksik), len(gereken))
+    return puan, ("Tüm gerekli terimler bulundu." if not eksik
+                  else f"{len(gereken) - len(eksik)}/{len(gereken)} terim bulundu. Eksik: {eksik}"), info
 
 
 def grade_answer(question, text):
-    """Bir sorunun cevabını değerlendirir -> (passed|None, detay, output_info)."""
+    """Bir sorunun cevabını değerlendirir -> (passed|None, detay, output_info, puan|None).
+
+    `puan` 0-1 arası kısmi puandır; `passed` ondan türetilir (tam puan = geçti).
+    Eski rapor kodu `passed` ile çalışmaya devam eder."""
+    puan, detay, info = _puanla(question, text)
+    return SCORE.gecti_mi(puan), detay, info, puan
+
+
+def _puanla(question, text):
+    """Ham puanlama -> (puan|None, detay, output_info)."""
     g = question["grader"]
     if not g:
         return None, "", None
     gtype, spec = g
     if text.startswith("[İSTEK HATASI"):
-        return False, "Modelden cevap alınamadı.", None
+        return 0.0, "Modelden cevap alınamadı.", None
     if not text.strip():
-        return False, "Model boş/eksik cevap verdi (token limiti veya düşünme aşaması).", None
+        return 0.0, "Model boş/eksik cevap verdi (token limiti veya düşünme aşaması).", None
     try:
         if gtype == "code":
             return grade_code(text, spec["func"], spec["tests"])
@@ -1369,8 +1473,15 @@ def grade_answer(question, text):
             return grade_text(text, spec["expected"])
         if gtype == "medikal":
             return grade_medikal(text, spec["gereken"])
+        if gtype == "talimat":
+            return GRADERS.grade_talimat(text, spec["kisitlar"])
+        if gtype == "json":
+            return GRADERS.grade_json(text, spec["sema"], spec["beklenen"])
+        if gtype == "halusinasyon":
+            return GRADERS.grade_halusinasyon(text, spec.get("yasak"),
+                                              soru_metni=question.get("prompt"))
     except Exception as e:
-        return False, f"Değerlendirici hatası: {e}", None
+        return 0.0, f"Değerlendirici hatası: {e}", None
     return None, "", None
 
 
@@ -1423,17 +1534,9 @@ def gpu_util_stats(gpu_summary):
 
 
 def category_summary(results):
-    out = {}
-    for cat in CATEGORIES:
-        items = [r for r in results if r["kategori"] == cat]
-        graded = [r for r in items if r["passed"] is not None]
-        out[cat] = {
-            "passed": sum(1 for r in graded if r["passed"]),
-            "graded": len(graded),
-            "items": len(items),
-            "time": sum(r["total"] for r in items),
-        }
-    return out
+    """Kategori özeti. Ağırlıklı puan/kademe/kararlılık hesabı bench.scoring'de;
+    `passed`/`graded`/`items`/`time` alanları eski rapor kodu için korunur."""
+    return SCORE.kategori_ozeti(results, CATEGORIES)
 
 
 # ===========================================================================
@@ -1558,12 +1661,16 @@ class GpuMonitor:
 # ===========================================================================
 
 def ask_llm(base_url, model_id, prompt, temperature, max_tokens, timeout=600, no_think=False,
-            repeat_penalty=1.1):
+            repeat_penalty=1.1, profil=None):
+    """`profil` verilirse örnekleme parametreleri ONDAN gelir (modelin kendi kartı);
+    verilmezse eski davranış (temperature + repeat_penalty argümanları) korunur."""
     url = base_url + "/v1/chat/completions"
     payload = {"model": model_id, "messages": [{"role": "user", "content": prompt}],
                "temperature": temperature, "max_tokens": max_tokens, "stream": True,
                "repeat_penalty": repeat_penalty, "stream_options": {"include_usage": True}}
-    if no_think:
+    if profil:
+        payload.update(PROFIL.ornekleme_alanlari(profil, no_think=no_think))
+    elif no_think:
         # Düşünmeyi (reasoning) destekleyen jinja şablonları için
         payload["chat_template_kwargs"] = {"enable_thinking": False}
     t0 = time.perf_counter()
@@ -1801,7 +1908,7 @@ def build_pdf(out_path, model_info, gpu_summary, results, run_meta):
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#fafafa")])]))
     el.append(kt)
     el.append(Paragraph("<b>Açıklama:</b> Ortalama hız = toplam üretilen token / toplam üretim süresi · "
-                        "Tepe VRAM = iki GPU'da test sırasında görülen en yüksek VRAM toplamı · "
+                        "Tepe VRAM = test sırasında görülen en yüksek VRAM · "
                         "GPU kullanımı = işlemcinin meşguliyet yüzdesi (ortalama ve tepe).", S["SMALL"]))
 
     # Detay (kategoriye göre)
@@ -1885,42 +1992,101 @@ def effective_max_tokens(args, n_ctx):
     return max(2048, n - 2048)   # prompt + şablon için küçük rezerv
 
 
-def run_questions(base_url, model_id, args, max_tokens, gpu=None, log=print):
-    """Tüm soruları sorar, değerlendirir; sonuç listesi döndürür. max_tokens: kullanılacak limit."""
+def _tek_deneme(base_url, model_id, q, args, max_tokens, no_think, rep, profil, n_ctx=None):
+    """Bir sorunun TEK denemesi -> ham kayıt (puanlanmış). avg@k bunu k kez çağırır.
+
+    `n_ctx` verilir ve soru sığmazsa istek HİÇ gönderilmez: puan None kalır,
+    `baglam_yetersiz` işaretlenir. Sığmayan soruya 0 vermek, yetenek eksikliği
+    ile donanım sınırını karıştırırdı."""
+    # Soru kendi cevap bütçesini dayatabilir. Uzun bağlamda varsayılan
+    # (n_ctx - 2048) istenirse istek bağlamı taşırır: 29k belge + 30k cevap
+    # bütçesi 32k'ya sığmaz ve sunucu hata döner.
+    max_tokens = min(max_tokens, q["max_tokens"]) if q.get("max_tokens") else max_tokens
+    gereken = q.get("gereken_token")
+    if gereken and n_ctx and gereken > int(n_ctx):
+        return {"text": f"[BAĞLAM YETERSİZ: soru ~{gereken} token, model context {n_ctx}]",
+                "ttft": 0, "total": 0, "completion_tokens": 0, "tokens_per_sec": 0,
+                "passed": None, "puan": None, "kesildi": False, "baglam_yetersiz": True,
+                "grade_detail": f"Soru bu modelin bağlamına sığmıyor "
+                                f"(~{gereken} token > {n_ctx}). Puanlanmadı.",
+                "grade_output": None}
+    if q.get("agentic"):
+        # Durum tutan araçlar (ör. "ilk çağrıda hata ver") avg@k'da her deneme
+        # için SIFIRLANMALI; yoksa ikinci deneme sahte kolaylık kazanır.
+        sifirla = q["agentic"].get("sifirla")
+        if callable(sifirla):
+            sifirla()
+        try:
+            ar = agentic_loop(base_url, model_id, q["agentic"], args.temperature, max_tokens,
+                              no_think=no_think, repeat_penalty=rep, profil=profil)
+        except Exception as e:
+            ar = {"text": f"[İSTEK HATASI: {e}]", "turns": 0, "tool_calls": 0,
+                  "read_before_answer": False, "transcript": [], "total": 0, "ttft": 0,
+                  "completion_tokens": 0, "tokens_per_sec": 0}
+        passed, detail, outinfo, puan = grade_answer(q, ar["text"])
+        return {"text": ar["text"] or "[boş]", "ttft": ar["ttft"], "total": ar["total"],
+                "completion_tokens": ar["completion_tokens"], "tokens_per_sec": ar["tokens_per_sec"],
+                "passed": passed, "puan": puan, "kesildi": False,
+                "grade_detail": detail, "grade_output": outinfo,
+                "agentic_info": {"turns": ar["turns"], "tool_calls": ar["tool_calls"],
+                                 "read_before": ar["read_before_answer"]}}
+    try:
+        resp = ask_llm(base_url, model_id, q["prompt"], args.temperature, max_tokens,
+                       no_think=no_think, repeat_penalty=rep, profil=profil)
+    except Exception as e:
+        resp = {"text": f"[İSTEK HATASI: {e}]", "reasoning": "", "finish_reason": "error",
+                "ttft": 0, "total": 0, "completion_tokens": 0, "tokens_per_sec": 0}
+    # NOT: yerel ad `puanlanacak` — eskiden `grade_text` idi ve aynı adlı
+    # grader fonksiyonunu gölgeliyordu (sessiz tuzak).
+    puanlanacak, display = normalize_answer(resp, max_tokens)
+    passed, detail, outinfo, puan = grade_answer(q, puanlanacak)
+    return {**resp, "text": display, "passed": passed, "puan": puan,
+            "kesildi": resp.get("finish_reason") == "length",
+            "grade_detail": detail, "grade_output": outinfo}
+
+
+def _denemeleri_birlestir(q, denemeler):
+    """k denemeyi tek kayda indirger.
+
+    Gösterilen metin İLK denemenindir (rapor okunabilir kalsın); puan üçünün
+    ortalaması, kararlılık yayılımdan gelir. Süre/token TOPLAMdır — avg@k'nın
+    gerçek maliyeti görünsün diye."""
+    birlesik = SCORE.birlestir([d["puan"] for d in denemeler])
+    ilk = denemeler[0]
+    toplam_sure = sum(d.get("total") or 0 for d in denemeler)
+    toplam_token = sum(d.get("completion_tokens") or 0 for d in denemeler)
+    return {**q, **ilk,
+            "puan": birlesik["puan"],
+            "passed": SCORE.gecti_mi(birlesik["puan"]),
+            "kararlilik": birlesik["kararlilik"],
+            "deneme_puanlari": birlesik["denemeler"],
+            "k": birlesik["k"],
+            "kesildi": any(d.get("kesildi") for d in denemeler),
+            "kesilen_deneme": sum(1 for d in denemeler if d.get("kesildi")),
+            "total": toplam_sure,
+            "completion_tokens": toplam_token,
+            "tokens_per_sec": (toplam_token / toplam_sure) if toplam_sure else 0}
+
+
+def run_questions(base_url, model_id, args, max_tokens, gpu=None, log=print, profil=None,
+                  n_ctx=None):
+    """Tüm soruları sorar, değerlendirir; sonuç listesi döndürür.
+
+    `args.tekrar` > 1 ise her puanlı soru k kez sorulup ortalanır (avg@k).
+    Puanlanmayan (yaratıcılık) sorular her zaman 1 kez sorulur."""
     no_think = getattr(args, "no_think", False)
     rep = getattr(args, "repeat_penalty", 1.1)
+    tekrar = max(1, int(getattr(args, "tekrar", 1) or 1))
     results = []
     for q in QUESTIONS:
-        log(f"   -> {q['baslik']}")
-        if q.get("agentic"):
-            # Çok-turlu araç döngüsü (model araç çağırır, biz çalıştırıp geri besleriz)
-            try:
-                ar = agentic_loop(base_url, model_id, q["agentic"], args.temperature, max_tokens,
-                                  no_think=no_think, repeat_penalty=rep)
-            except Exception as e:
-                ar = {"text": f"[İSTEK HATASI: {e}]", "turns": 0, "tool_calls": 0,
-                      "read_before_answer": False, "transcript": [], "total": 0, "ttft": 0,
-                      "completion_tokens": 0, "tokens_per_sec": 0}
-            passed, detail, outinfo = grade_answer(q, ar["text"])
-            disp = ar["text"] or "[boş]"
-            results.append({**q, "text": disp, "ttft": ar["ttft"], "total": ar["total"],
-                            "completion_tokens": ar["completion_tokens"],
-                            "tokens_per_sec": ar["tokens_per_sec"], "passed": passed,
-                            "grade_detail": detail, "grade_output": outinfo,
-                            "agentic_info": {"turns": ar["turns"], "tool_calls": ar["tool_calls"],
-                                             "read_before": ar["read_before_answer"]}})
-            continue
-        try:
-            resp = ask_llm(base_url, model_id, q["prompt"], args.temperature, max_tokens,
-                           no_think=no_think, repeat_penalty=rep)
-        except Exception as e:
-            resp = {"text": f"[İSTEK HATASI: {e}]", "reasoning": "", "finish_reason": "error",
-                    "ttft": 0, "total": 0, "completion_tokens": 0, "tokens_per_sec": 0}
-        grade_text, display = normalize_answer(resp, max_tokens)
-        passed, detail, outinfo = grade_answer(q, grade_text)
-        results.append({**q, **resp, "text": display, "passed": passed,
-                        "grade_detail": detail, "grade_output": outinfo})
+        k = tekrar if q.get("grader") else 1
+        log(f"   -> {q['baslik']}" + (f"  (×{k})" if k > 1 else ""))
+        denemeler = [_tek_deneme(base_url, model_id, q, args, max_tokens, no_think, rep,
+                                 profil, n_ctx=n_ctx)
+                     for _ in range(k)]
+        results.append(_denemeleri_birlestir(q, denemeler))
     return results
+
 
 
 def run_live(args):
@@ -1930,15 +2096,21 @@ def run_live(args):
     print(f"   Model: {info['name']}")
     mt = effective_max_tokens(args, info["params"].get("n_ctx"))
     print(f"   max_tokens: {mt}")
+    profil = PROFIL.profil_bul(info["name"], deterministik=args.deterministik)
+    print(f"   profil: {PROFIL.ozet(profil)}")
+    if args.tekrar > 1:
+        print(f"   tekrar: her puanlı soru ×{args.tekrar} (avg@{args.tekrar})")
     gpu = GpuMonitor(interval=args.gpu_interval)
     gpu.start()
     try:
-        results = run_questions(base, info["served_id"], args, mt)
+        results = run_questions(base, info["served_id"], args, mt, profil=profil,
+                                n_ctx=info["params"].get("n_ctx"))
     finally:
         gpu.stop()
     ts = _dt.datetime.now()
     run_meta = {"url": base, "timestamp": ts.strftime("%Y-%m-%d %H:%M:%S"),
-                "temperature": args.temperature, "max_tokens": mt}
+                "temperature": args.temperature, "max_tokens": mt,
+                "profil": PROFIL.ozet(profil), "tekrar": args.tekrar}
     # Her çalıştırmada Model_raporları altında YENİ çalışma klasörü (çakışmaya karşı bağışık)
     base = os.path.join(args.out_dir, f"calisma_{ts.strftime('%Y%m%d_%H%M%S')}")
     run_dir, k = base, 2
@@ -1970,6 +2142,9 @@ def reference_answer(q):
         return f"... çıkarım ...\n#### {spec['expected']}"
     if gtype == "medikal":
         return "#### " + " ve ".join(k[0] for k in spec["gereken"])
+    if gtype in ("talimat", "json", "halusinasyon"):
+        # Bu branşlarda referans cevap sorunun kendisiyle birlikte tanımlıdır.
+        return spec["cozum"]
     return ""
 
 
@@ -1979,18 +2154,20 @@ def run_selftest(args):
     fails = 0
     for q in QUESTIONS:
         text = reference_answer(q)
-        passed, detail, outinfo = grade_answer(q, text)
+        passed, detail, outinfo, puan = grade_answer(q, text)
         if q["grader"] and not passed:
             fails += 1
             print(f"   ✗ {q['baslik']}: referans GEÇMEDİ! {detail[:80]}")
         results.append({**q, "text": text, "ttft": 0.1, "total": 1.2, "completion_tokens": 40,
-                        "tokens_per_sec": 25.0, "passed": passed, "grade_detail": detail,
+                        "tokens_per_sec": 25.0, "passed": passed, "puan": puan,
+                        "kararlilik": None, "kesildi": False, "grade_detail": detail,
                         "grade_output": outinfo})
     # bir de kasıtlı yanlış (kod_1) -> KALMALI
     wrongq = next((x for x in QUESTIONS if x["key"] == "kod_1"), None)
     if wrongq:
-        wp, _, _ = grade_answer(wrongq, "```python\ndef roman_sayi(s):\n    return 0\n```")
-        print(f"   kasıtlı yanlış kod_1 -> passed={wp} (False olmalı) {'✓' if wp is False else '✗'}")
+        wp, _, _, wpuan = grade_answer(wrongq, "```python\ndef roman_sayi(s):\n    return 0\n```")
+        print(f"   kasıtlı yanlış kod_1 -> passed={wp} puan={wpuan:.2f} "
+              f"(False olmalı) {'✓' if wp is False else '✗'}")
     print(f"   Referans sonucu: {len([r for r in results if r['grader'] and r['passed']])}"
           f"/{len([r for r in results if r['grader']])} GEÇTİ, {fails} hata.")
     info = {"name": "SELFTEST", "model_path": None, "params": {"n_ctx": 8192}, "served_id": "selftest"}
@@ -2020,6 +2197,12 @@ def main():
                     help="Yanıt başına maksimum token. 0 = OTOMATİK: bağlamın izin verdiği maksimum (n_ctx - 2048)")
     ap.add_argument("--no-think", action="store_true",
                     help="Düşünmeyi (reasoning) kapat — destekleyen modeller için (enable_thinking=false)")
+    ap.add_argument("--tekrar", type=int, default=1, metavar="K",
+                    help="Her puanlı soru K kez sorulup ortalanır (avg@K). Kart ayarıyla "
+                         "(rastgele örnekleme) koşarken gürültüyü bastırır. Varsayılan 1.")
+    ap.add_argument("--deterministik", action="store_true",
+                    help="Model profilini yok say, eski rejimle koş (temperature=0, greedy). "
+                         "Karşılaştırılabilir taban ölçümü için.")
     ap.add_argument("--gpu-interval", type=float, default=0.5)
     ap.add_argument("--selftest", action="store_true")
     args = ap.parse_args()

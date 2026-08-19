@@ -8,7 +8,7 @@ Bir modeli testten çıkarmak için onun `open_*.sh` dosyasını `launch/` dış
 taşı. Tekrar dahil etmek için geri koy. Kod, `launch/`'ı KENDİLİĞİNDEN yeniden ÜRETMEZ
 (taşıdıkların korunur); ilk kurulumda `launch/` boşsa tüm modeller için launcher üretir.
 
-Her model için sırayla: llama-server'ı ÇİFT GPU'da açar -> /health hazır olunca
+Her model için sırayla: llama-server'ı TEK GPU'da açar -> /health hazır olunca
 tüm soruları (1 yaratıcılık + 5 kod + 5 SQL + 5 matematik) uygular + GPU/VRAM ölçer
 -> sunucuyu kapatır -> sonraki model. Açılmazsa durmaz, sonrakine geçer.
 
@@ -19,7 +19,8 @@ tüm soruları (1 yaratıcılık + 5 kod + 5 SQL + 5 matematik) uygular + GPU/VR
             model_raporlari/                 <- tekli model PDF'leri (alt klasör)
                 rapor_<model>_<tarih>.pdf
 
-TÜM modeller eşit/adil koşul için ÇİFT GPU (-sm layer, 0,1) + flash attention (-fa on) ile açılır.
+TÜM modeller eşit/adil koşul için TEK GPU (-sm none, cihaz 0) + flash attention (-fa on) ile
+açılır. (17 Ağu 2026: makinede tek RTX 4090 kaldı; eski çift-GPU kurulumu yok.)
 
 Kullanım:
     python run_models.py                       # launch/ içindeki modelleri test et
@@ -42,6 +43,9 @@ import time
 import requests
 
 import models_config as CFG
+from bench import kayit as KAYIT
+from bench import profiles as PROFIL
+from bench import scoring as SCORE
 from llm_perf_test import (QUESTIONS, CATEGORIES, run_questions, category_summary,
                            detect_model, GpuMonitor, safe_name, build_pdf,
                            _styles, _para, _verdict_tag, correct_answer_text,
@@ -99,7 +103,7 @@ def read_gpu_mem():
 
 
 # ---------------------------------------------------------------------------
-# Sunucu yönetimi (her model ÇİFT GPU)
+# Sunucu yönetimi (her model TEK GPU)
 # ---------------------------------------------------------------------------
 
 def _parse_sh_params(txt):
@@ -108,7 +112,7 @@ def _parse_sh_params(txt):
     ctx = int(m.group(1)) if m else CFG.DEFAULT_CTX
     cvd = re.search(r"CUDA_VISIBLE_DEVICES=(\S+)", txt)
     sm = re.search(r"-sm\s+(\S+)", txt)
-    devs = cvd.group(1) if cvd else "0,1"
+    devs = cvd.group(1) if cvd else "0"
     n_dev = len([d for d in devs.split(",") if d != ""])
     if n_dev >= 2 and (not sm or sm.group(1) != "none"):
         mode = "çift GPU"
@@ -137,15 +141,15 @@ def launch_server(cfg, log_path):
     ctx = cfg.get("ctx", CFG.DEFAULT_CTX)
     ngl = cfg.get("ngl", CFG.DEFAULT_NGL)
     env = dict(os.environ)
-    env["CUDA_VISIBLE_DEVICES"] = "0,1"
+    env["CUDA_VISIBLE_DEVICES"] = "0"
     cmd = [CFG.LLAMA_SERVER, "-m", model_path(cfg), "-c", str(ctx), "-ngl", str(ngl),
-           "-fa", "on", "-sm", "layer", "--host", CFG.HOST, "--port", str(CFG.PORT),
+           "-fa", "on", "-sm", "none", "--host", CFG.HOST, "--port", str(CFG.PORT),
            "-a", alias_of(cfg), "--jinja"]
     logf.write("CMD (.sh bulunamadı, yedek): " + " ".join(cmd) + "\n\n")
     logf.flush()
     proc = subprocess.Popen(cmd, env=env, stdout=logf, stderr=subprocess.STDOUT,
                             start_new_session=True)
-    return proc, logf, ctx, "çift GPU"
+    return proc, logf, ctx, "tek GPU"
 
 
 def wait_health(proc, timeout=300):
@@ -228,10 +232,18 @@ def test_one_model(cfg, args):
         mt = effective_max_tokens(args, info["params"].get("n_ctx") or ctx)
         rec["max_tokens"] = mt
         print(f"      max_tokens: {mt}")
+        # Profil, modelin KENDİ kartındaki örnekleme ayarını getirir (bkz. bench/profiles.py).
+        # Model adı .sh'den değil, sunucunun bildirdiği addan çözülür.
+        profil = PROFIL.profil_bul(rec["name"], deterministik=args.deterministik)
+        rec["profil"] = profil
+        print(f"      profil: {PROFIL.ozet(profil)}")
+        if args.tekrar > 1:
+            print(f"      tekrar: her puanlı soru ×{args.tekrar} (avg@{args.tekrar})")
         gpu = GpuMonitor(interval=args.gpu_interval)
         gpu.start()
         try:
-            rec["results"] = run_questions(BASE_URL, info["served_id"], args, mt)
+            rec["results"] = run_questions(BASE_URL, info["served_id"], args, mt, profil=profil,
+                                           n_ctx=info["params"].get("n_ctx") or ctx)
         finally:
             gpu.stop()
         rec["gpu_summary"] = gpu.summary()
@@ -354,36 +366,43 @@ def build_combined_pdf(out_path, records, run_meta):
     el.append(Paragraph(f"{run_meta['timestamp']} &nbsp;|&nbsp; {ok_n}/{len(records)} model "
                         f"&nbsp;|&nbsp; temperature={run_meta['temperature']} &nbsp;|&nbsp; "
                         f"max_tokens={run_meta['max_tokens']} &nbsp;|&nbsp; ctx={CFG.DEFAULT_CTX} "
-                        f"&nbsp;|&nbsp; çift GPU", S["SMALL"]))
+                        f"&nbsp;|&nbsp; tek GPU", S["SMALL"]))
     el.append(HRFlowable(width="100%", color=colors.grey, spaceBefore=6, spaceAfter=8))
 
     # ---- TABLO 1: skorlar (puanlanan tüm kategoriler dinamik) ----
     gcats, _gc = graded_categories()
     _ntot = sum(_gc[c] for c in gcats)
     el.append(Paragraph("1) Skor Karşılaştırması", S["H2"]))
-    rows = [["Model"] + [f"{SHORT_CAT.get(c, c)} /{_gc[c]}" for c in gcats]
-            + [f"Oto /{_ntot}", "Σ süre (s)", "ort tok/s", "VRAM (GB)"]]
+    # Hücreler AĞIRLIKLI puan gösterir (kısmi puan × kademe ağırlığı), çünkü
+    # "kaç soru tam geçti" sayısı kısmi puanı ve zorluk farkını yok sayıyordu.
+    rows = [["Model", "Ağırlıklı puan", "%", "Tam geçen", "Kararlılık",
+             "Σ süre (s)", "ort tok/s", "ctx"]]
 
     def sort_key(r):
         if not r["ok"]:
             return (1, 0, 9e9)
         cs = category_summary(r["results"])
-        tot = sum(cs[c]["passed"] for c in gcats)
-        return (0, -tot, sum(x["total"] for x in r["results"]))
+        return (0, -SCORE.toplam_ozet(cs)["agirlikli_puan"],
+                sum(x["total"] for x in r["results"]))
 
     import statistics as _st
     for rec in sorted(records, key=sort_key):
         if not rec["ok"]:
-            rows.append([NM(rec["name"])] + ["—"] * len(gcats) + ["AÇILMADI", "—", "—", "—"])
+            rows.append([NM(rec["name"]), "AÇILMADI"] + ["—"] * 6)
             continue
         cs = category_summary(rec["results"])
-        oto = sum(cs[c]["passed"] for c in gcats)
-        oton = sum(cs[c]["graded"] for c in gcats)
+        ozet = SCORE.toplam_ozet(cs)
         tot = sum(x["total"] for x in rec["results"])
         tps = _st.mean([x["tokens_per_sec"] for x in rec["results"] if x["tokens_per_sec"]] or [0])
-        rows.append([NM(rec["name"])] + [f"{cs[c]['passed']}/{cs[c]['graded']}" for c in gcats]
-                     + [f"{oto}/{oton}", f"{tot:.0f}", f"{tps:.1f}", f"{rec['vram_peak_delta']/1024:.1f}"])
-    colW = [40*mm] + [14*mm] * len(gcats) + [15*mm, 18*mm, 15*mm, 16*mm]
+        krr = [x["kararlilik"] for x in rec["results"] if x.get("kararlilik") is not None]
+        rows.append([NM(rec["name"]),
+                     f"{ozet['agirlikli_puan']:.0f} / {ozet['azami_agirlik']}",
+                     f"%{ozet['yuzde']:.0f}",
+                     f"{ozet['gecen']}/{ozet['puanli']}",
+                     (f"{sum(krr)/len(krr):.2f}" if krr else "—"),
+                     f"{tot:.0f}", f"{tps:.1f}",
+                     f"{(rec.get('ctx') or 0)//1024}k"])
+    colW = [52*mm, 26*mm, 12*mm, 20*mm, 20*mm, 20*mm, 18*mm, 14*mm]
     t = Table(rows, colWidths=colW)
     t.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), f), ("FONTSIZE", (0, 0), (-1, -1), 8),
@@ -395,10 +414,11 @@ def build_combined_pdf(out_path, records, run_meta):
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f6f8fa")])]))
     el.append(t)
     el.append(Paragraph(
-        f"<b>Sütunlar:</b> Kategori sütunları = o kategoride geçilen soru / toplam soru "
-        f"(Kod=kod yazma+okuma, Hata=hata ayıklama) · Oto /{_ntot} = tüm otomatik puanların toplamı · "
-        "Σ süre (s) = tüm soruların toplam yanıt süresi · ort tok/s = ortalama üretim hızı · "
-        "VRAM (GB) = açılış öncesine göre tepe VRAM artışı (iki GPU). Yaratıcılık otomatik puanlanmaz.",
+        "<b>Ağırlıklı puan</b> = Σ (kısmi puan × kademe ağırlığı); ağırlıklar kolay 1, "
+        f"orta 2, zor 3, acımasız 4 · <b>Tam geçen</b> = tam puan alınan soru / puanlanan "
+        f"soru ({_ntot}) · <b>Kararlılık</b> = avg@K denemelerinin tutarlılığı (1,00 = her "
+        "denemede aynı sonuç) · <b>ctx</b> = modelin ÖLÇÜLMÜŞ context tavanı. "
+        "Yaratıcılık branşı otomatik puanlanmaz.",
         S["SMALL"]))
 
     # ---- GENEL PERFORMANS SÜTUN GRAFİĞİ ----
@@ -408,6 +428,67 @@ def build_combined_pdf(out_path, records, run_meta):
         el.append(chart)
 
     # ---- TABLO 2: süreler ----
+    # ---- TABLO 1a: kategori kırılımı (12 branş tek tabloya sığmadığı için ayrıldı) ----
+    el.append(Paragraph("1a) Branş Bazında Ağırlıklı Puan", S["H2"]))
+    krows = [["Model"] + [SHORT_CAT.get(c, c) for c in gcats]]
+    for rec in sorted(records, key=sort_key):
+        if not rec["ok"]:
+            continue
+        cs = category_summary(rec["results"])
+        krows.append([NM(rec["name"])]
+                     + [("—" if not cs[c]["graded"]
+                         else f"{cs[c]['agirlikli_puan']:.0f}/{cs[c]['azami_agirlik']}")
+                        for c in gcats])
+    kt = Table(krows, colWidths=[38*mm] + [(140.0 / max(1, len(gcats)))*mm] * len(gcats))
+    kt.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a3c5e")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, -1), f), ("FONTNAME", (0, 0), (-1, 0), fb),
+        ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#9aa5b1")),
+        ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2)]))
+    el.append(kt)
+    el.append(Paragraph("Her hücre: alınan ağırlıklı puan / o branşın azami ağırlığı.", S["SMALL"]))
+    el.append(Spacer(1, 6))
+
+    # ---- TABLO 1b: hangi model hangi PARAMETRELERLE koştu ----
+    # Modeller artık aynı koşullarda koşmuyor (her biri kendi kartının ayarıyla);
+    # bu tablo olmadan karşılaştırma yorumlanamaz.
+    el.append(Paragraph("1b) Model Parametreleri", S["H2"]))
+    prow = [["Model", "Profil / örnekleme", "ctx", "En zor çözülen", "Kesilen", "Bağlam yetersiz"]]
+    for rec in records:
+        if not rec["ok"]:
+            continue
+        cs = category_summary(rec["results"])
+        kademeler = [cs[c]["en_zor_kademe"] for c in cs if cs[c]["en_zor_kademe"]]
+        sira = SCORE.KADEME_SIRA
+        enzor = max(kademeler, key=sira.index) if kademeler else "—"
+        yetersiz = sum(1 for x in rec["results"] if x.get("baglam_yetersiz"))
+        prow.append([NM(rec["name"]),
+                     PROFIL.ozet(rec.get("profil") or {}),
+                     f"{(rec.get('ctx') or 0)//1024}k",
+                     enzor,
+                     str(sum(1 for x in rec["results"] if x.get("kesildi"))),
+                     str(yetersiz)])
+    pt = Table(prow, colWidths=[36*mm, 74*mm, 12*mm, 22*mm, 15*mm, 22*mm])
+    pt.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a3c5e")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, -1), f), ("FONTNAME", (0, 0), (-1, 0), fb),
+        ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#9aa5b1")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3)]))
+    el.append(pt)
+    el.append(Paragraph(
+        "Koşullar model başına FARKLIDIR (her model kendi kartının önerdiği örnekleme ve "
+        "ölçülmüş context tavanı ile açıldı). Sonuç 'aynı koşulda hangisi iyi' değil, "
+        "'her biri en iyi hâliyle ne yapabiliyor' sorusunu yanıtlar. "
+        "Kesilen = token tavanına çarpıp cevapsız kalan soru · Bağlam yetersiz = belgesi "
+        "modelin context'ine sığmadığı için PUANLANMAYAN soru.", S["SMALL"]))
+    el.append(Spacer(1, 6))
+
     el.append(Paragraph("2) Kategori Bazında Toplam Süre (s)", S["H2"]))
     rows2 = [["Model"] + [SHORT_CAT.get(c, c) for c in CATEGORIES]]
     for rec in records:
@@ -429,6 +510,36 @@ def build_combined_pdf(out_path, records, run_meta):
                         "süresidir (saniye). Düşük = daha hızlı.", S["SMALL"]))
 
     # ---- TABLO 3: Kaynak Kullanımı (modellerin harcadığı kaynaklar + ortalama token/s) ----
+    # ---- MADDE ANALİZİ: sorular gerçekten ayırt ediyor mu? ----
+    ms = {r["name"]: r["results"] for r in records if r.get("ok") and r.get("results")}
+    analiz = SCORE.madde_analizi(ms)
+    if analiz:
+        oz = SCORE.analiz_ozeti(analiz)
+        el.append(Paragraph("2b) Madde Analizi — sorular ayırt ediyor mu?", S["H2"]))
+        el.append(Paragraph(
+            f"{oz['toplam']} puanlı sorudan <b>{oz['ayirt_eden']}</b>'i modelleri ayırıyor "
+            f"(%{oz['oran']}). Hiç ayrım üretmeyen (emeklilik adayı): "
+            f"<b>{oz['emeklilik_adayi']}</b>. Ayrım üretmeyen soru, testin o koşuda boşa "
+            f"harcadığı süredir; zorlaştırılmalı ya da emekliye ayrılmalıdır.", S["SMALL"]))
+        arows = [["Soru", "Kademe", "Yayılım"] + [NM(m) for m in ms]]
+        for a in [x for x in analiz if x["ayirt_ediyor"]][:14]:
+            arows.append([a["baslik"][:34], a["kademe"] or "—", f"{a['yayilim']:.2f}"]
+                         + [f"{a['puanlar'].get(m, 0):.2f}" for m in ms])
+        if len(arows) > 1:
+            at = Table(arows, colWidths=[52*mm, 16*mm, 14*mm] + [24*mm] * len(ms))
+            at.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#15803d")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, -1), f), ("FONTNAME", (0, 0), (-1, 0), fb),
+                ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#9aa5b1")),
+                ("ALIGN", (2, 1), (-1, -1), "CENTER")]))
+            el.append(at)
+            el.append(Paragraph("En ayırt edici 14 soru. Tam liste: "
+                                "<b>python madde_analizi.py &lt;koşu klasörü&gt; --hepsi</b>",
+                                S["SMALL"]))
+        el.append(Spacer(1, 6))
+
     el.append(Paragraph("3) Kaynak Kullanımı", S["H2"]))
     rows3 = [["Model", "Ort. token/s", "Toplam token", "Σ süre (s)", "Tepe VRAM (GB)", "GPU ort/tepe %"]]
     for rec in records:
@@ -453,7 +564,7 @@ def build_combined_pdf(out_path, records, run_meta):
     el.append(Paragraph(
         "<b>Sütunlar:</b> Ort. token/s = toplam üretilen token / toplam üretim süresi (yüksek = hızlı) · "
         "Toplam token = üretilen toplam token sayısı · Σ süre (s) = toplam yanıt süresi · "
-        "Tepe VRAM (GB) = açılış öncesine göre iki GPU'daki en yüksek VRAM artışı toplamı · "
+        "Tepe VRAM (GB) = açılış öncesine göre görülen en yüksek VRAM artışı · "
         "GPU ort/tepe % = test boyunca ortalama ve en yüksek GPU kullanım yüzdesi.", S["SMALL"]))
 
     # ---- Sorular (bir kez) ----
@@ -505,23 +616,32 @@ def build_combined_pdf(out_path, records, run_meta):
 
 
 # ---------------------------------------------------------------------------
-# Launcher üreteci (hepsi çift GPU)
+# Launcher üreteci (hepsi tek GPU)
 # ---------------------------------------------------------------------------
 
 def gen_launchers():
+    """Her model için açılış betiği üretir.
+
+    Context ve KV tipi model PROFİLİNDEN gelir (bench/profiles.py) — modeller
+    aynı context'e zorlanmaz, her biri kendi ölçülmüş tavanında açılır.
+    `models_config.MODELS` içindeki açık `ctx` değeri profili ezer."""
     os.makedirs(LAUNCH_DIR, exist_ok=True)
     n = 0
     for cfg in CFG.MODELS:
-        ctx = cfg.get("ctx", CFG.DEFAULT_CTX)
+        profil = PROFIL.profil_bul(alias_of(cfg))
+        ctx = cfg.get("ctx") or profil.get("ctx") or CFG.DEFAULT_CTX
         ngl = cfg.get("ngl", CFG.DEFAULT_NGL)
+        kv = cfg.get("kv_tipi") or profil.get("kv_tipi")
+        kv_satir = f" -ctk {kv} -ctv {kv}" if kv else ""
         sh = os.path.join(LAUNCH_DIR, "open_" + safe_name(alias_of(cfg)) + ".sh")
         content = f"""#!/usr/bin/env bash
-# {cfg['file']}  (çift GPU)  -> http://{CFG.HOST}:{CFG.PORT}
+# {cfg['file']}  (tek GPU, {ctx // 1024}k{', KV ' + kv if kv else ''}, -fa on)  -> http://{CFG.HOST}:{CFG.PORT}
+# profil: {PROFIL.ozet(profil)}
 set -e
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0
 "{CFG.LLAMA_SERVER}" \\
   -m "{model_path(cfg)}" \\
-  -c {ctx} -ngl {ngl} -sm layer -fa on \\
+  -c {ctx} -ngl {ngl} -sm none -fa on{kv_satir} \\
   --host {CFG.HOST} --port {CFG.PORT} \\
   -a {alias_of(cfg)} --jinja
 """
@@ -535,6 +655,30 @@ export CUDA_VISIBLE_DEVICES=0,1
 # ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
+
+def _madde_analizi_yaz(records):
+    """Konsola madde analizi özeti basar: hangi sorular ayırt ediyor, hangileri boşa çalışıyor.
+
+    Testin kendi bakımını söylemesi için var. En az 2 başarılı model gerekir."""
+    ms = {r["name"]: r["results"] for r in records if r.get("ok") and r.get("results")}
+    analiz = SCORE.madde_analizi(ms)
+    if not analiz:
+        print("\n(madde analizi için en az 2 başarılı model gerekir — atlandı)")
+        return
+    ozet = SCORE.analiz_ozeti(analiz)
+    print("\n==== MADDE ANALİZİ ====")
+    print(f"  {ozet['toplam']} puanlı sorudan {ozet['ayirt_eden']}'i modelleri ayırıyor "
+          f"(%{ozet['oran']}). Emeklilik adayı: {ozet['emeklilik_adayi']}")
+    ayirt = [a for a in analiz if a["ayirt_ediyor"]]
+    if ayirt:
+        print("  En ayırt edici sorular:")
+        for a in ayirt[:10]:
+            puanlar = " · ".join(f"{m[:18]}={p:.2f}" for m, p in a["puanlar"].items())
+            print(f"    {a['baslik'][:36]:<36} yayılım={a['yayilim']:.2f}  {puanlar}")
+    if ozet["emeklilik_adayi"]:
+        print(f"  Hiçbir ayrım üretmeyen {ozet['emeklilik_adayi']} soru var; "
+              f"ayrıntı: python madde_analizi.py <kosu_klasoru>")
+
 
 def make_output_dirs(out_root, ts):
     """Her çalıştırmada Model_raporları altında YENİ bir çalışma klasörü açar (benzersiz isim).
@@ -568,10 +712,11 @@ def run_combined_selftest(args):
         for q in QUESTIONS:
             # seviyesi eşiğin altındaysa doğru, üstündeyse yanlış cevap ver
             text = correct[q["key"]] if q["seviye"] < esik else "(yanlış / eksik cevap)"
-            passed, detail, outinfo = grade_answer(q, text)
+            passed, detail, outinfo, puan = grade_answer(q, text)
             results.append({**q, "text": text, "ttft": 0.1, "total": 1.0 + i,
                             "completion_tokens": 50, "tokens_per_sec": 30 - i * 4,
-                            "passed": passed, "grade_detail": detail, "grade_output": outinfo})
+                            "passed": passed, "puan": puan, "kararlilik": None, "kesildi": False,
+                            "grade_detail": detail, "grade_output": outinfo})
         records.append({"file": name, "name": name, "ok": True, "error": None,
                         "params": {"n_ctx": 8192}, "ctx": 8192, "results": results,
                         "gpu_summary": {}, "vram_peak_delta": 12000 + i * 3000})
@@ -583,11 +728,13 @@ def run_combined_selftest(args):
           "max_tokens": args.max_tokens}
     out = os.path.join(sdir, f"KARSILASTIRMA_SELFTEST_{ts.strftime('%Y%m%d_%H%M%S')}.pdf")
     build_combined_pdf(out, records, rm)
+    KAYIT.yaz(sdir, records, rm)          # kayıt + analiz yolu selftest'te de sınansın
     print(f"✔ Birleşik selftest PDF: {out}")
+    _madde_analizi_yaz(records)
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Tüm lokal LLM'leri test eden orkestratör (çift GPU).")
+    ap = argparse.ArgumentParser(description="Tüm lokal LLM'leri test eden orkestratör (tek GPU).")
     ap.add_argument("--only", nargs="*")
     ap.add_argument("--out-dir", default=OUTPUT_BASE,
                     help="Raporların üst klasörü (vars: ./Model_raporları)")
@@ -599,6 +746,12 @@ def main():
                     help="Yanıt başına maksimum token. 0 = OTOMATİK: bağlamın izin verdiği maksimum (n_ctx - 2048)")
     ap.add_argument("--no-think", action="store_true",
                     help="Düşünmeyi (reasoning) kapat — enable_thinking=false")
+    ap.add_argument("--tekrar", type=int, default=1, metavar="K",
+                    help="Her puanlı soru K kez sorulur, puan ortalanır (avg@K). "
+                         "Kart ayarıyla koşarken gürültüyü bastırır.")
+    ap.add_argument("--deterministik", action="store_true",
+                    help="Model profillerini yok say, hepsini temperature=0 ile koş "
+                         "(eski rejim; karşılaştırılabilir taban).")
     ap.add_argument("--gpu-interval", type=float, default=0.5)
     ap.add_argument("--load-timeout", type=int, default=300)
     ap.add_argument("--gen-launchers", action="store_true")
@@ -641,7 +794,7 @@ def main():
 
     ts0 = _dt.datetime.now()
     root, per_model_dir = make_output_dirs(args.out_dir, ts0)
-    print(f"== launch/ içindeki {len(models)} model test edilecek (çift GPU) ==")
+    print(f"== launch/ içindeki {len(models)} model test edilecek (tek GPU) ==")
     print(f"   (testten çıkarmak için ilgili open_*.sh'yi launch/ dışına taşı, örn. launch_1/)")
     print(f"   çalışma klasörü: {root}")
     print(f"   (genel rapor buraya, tekli raporlar -> model_raporlari/ alt klasörüne)")
@@ -679,10 +832,20 @@ def main():
           "max_tokens": mt_disp}
     out = os.path.join(root, f"KARSILASTIRMA_{ts.strftime('%Y%m%d_%H%M')}.pdf")
     build_combined_pdf(out, records, rm)
+    # Ham sonuçlar: madde analizi ve yeniden puanlama modelleri tekrar
+    # çalıştırmadan yapılabilsin diye PDF'in YANINA yazılır.
+    try:
+        jyol = KAYIT.yaz(root, records, rm)
+    except Exception as e:
+        jyol = None
+        print(f"   [uyarı] sonuclar.json yazılamadı: {e}")
     ok_n = sum(1 for r in records if r["ok"])
     print(f"\n==== BİTTİ: {ok_n}/{len(records)} model test edildi ====")
     print(f"✔ Birleşik PDF: {out}")
     print(f"✔ Model PDF'leri: {per_model_dir}/")
+    if jyol:
+        print(f"✔ Ham sonuçlar: {jyol}")
+    _madde_analizi_yaz(records)
 
 
 if __name__ == "__main__":

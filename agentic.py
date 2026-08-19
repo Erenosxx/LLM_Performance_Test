@@ -13,6 +13,8 @@ import time
 
 import requests
 
+from bench import profiles as _PROFIL
+
 LANG = "tr"   # "tr" / "en" — llm_perf_test.use_language() tarafından ayarlanır
 
 
@@ -406,7 +408,7 @@ for _t in AGENTIC_TASKS:
 # ===========================================================================
 
 def agentic_loop(base_url, model_id, task, temperature, max_tokens,
-                 no_think=False, max_turns=25, timeout=300, repeat_penalty=1.1):
+                 no_think=False, max_turns=25, timeout=300, repeat_penalty=1.1, profil=None):
     """Modeli araçlarla çok-turlu çalıştırır. Dayanıklı: hata/araçsızlık/limit -> durmaz.
     Döndürür: text (nihai cevap), turns, tool_calls, read_before_answer, total, completion_tokens, ttft."""
     url = base_url + "/v1/chat/completions"
@@ -424,7 +426,9 @@ def agentic_loop(base_url, model_id, task, temperature, max_tokens,
         payload = {"model": model_id, "messages": messages, "tools": task["tools"],
                    "temperature": temperature, "max_tokens": max_tokens,
                    "repeat_penalty": repeat_penalty}
-        if no_think:
+        if profil:
+            payload.update(_PROFIL.ornekleme_alanlari(profil, no_think=no_think))
+        elif no_think:
             payload["chat_template_kwargs"] = {"enable_thinking": False}
         try:
             r = requests.post(url, json=payload, timeout=timeout)
