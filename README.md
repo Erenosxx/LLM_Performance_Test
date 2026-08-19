@@ -164,6 +164,10 @@ Tek-model tester (`llm_perf_test.py`) de aynı yapıyı kullanır
 - `launch/open_<model>.sh` — her modeli **manuel** açmak için de kullanabilirsin.
   Üretilen betik şuna benzer:
 
+  ![Üretilen açılış betiği: set -e, CUDA_VISIBLE_DEVICES=0, ardından llama-server çağrısı — model yolu, -c 131072 context, -ngl 99, -sm none, -fa on, --host 127.0.0.1 --port 8080, alias ve --jinja](images/launch-example.png)
+
+  Kopyalanabilir hâli (yolları kendi kurulumuna göre doldur):
+
   ```bash
   set -e
   export CUDA_VISIBLE_DEVICES=0

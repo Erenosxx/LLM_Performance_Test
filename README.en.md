@@ -185,6 +185,10 @@ Model_raporları/
 - `launch/open_<model>.sh` can also be used to start a model **manually**. A generated
   script looks like this:
 
+  ![A generated launch script: set -e, CUDA_VISIBLE_DEVICES=0, then the llama-server call with the model path, -c 131072 context, -ngl 99, -sm none, -fa on, --host 127.0.0.1 --port 8080, an alias and --jinja](images/launch-example.png)
+
+  Copy-pasteable version (fill in the paths for your own setup):
+
   ```bash
   set -e
   export CUDA_VISIBLE_DEVICES=0
