@@ -263,9 +263,35 @@ def test_one_model(cfg, args):
 # Birleşik PDF
 # ---------------------------------------------------------------------------
 
+# Sütun başlıkları DAR hücrelere giriyor: her branşın kısa adı OLMAK ZORUNDA.
+# Kısa adı olmayan branş tam adıyla yazılır ve komşu sütunun üstüne taşar
+# (12 branşa çıkıldığında "Halüsinasyon" ile "Türkçe" iç içe geçmişti).
 SHORT_CAT = {"Yaratıcılık": "Yarat.", "Kod": "Kod", "SQL": "SQL",
-             "Matematik": "Mat", "Hata Ayıklama": "Hata", "Agentic": "Agent.", "Medikal": "Medik."}
-CAT_COLORS = ["#1a3c5e", "#15803d", "#d97706", "#7c3aed", "#be123c", "#0891b2"]
+             "Matematik": "Mat", "Hata Ayıklama": "Hata", "Agentic": "Agent.",
+             "Medikal": "Medik.", "Talimat": "Talim.", "JSON": "JSON",
+             "Halüsinasyon": "Halüs.", "Türkçe": "Türkçe", "Uzun Bağlam": "Uzun B."}
+
+# Renk sayısı branş sayısından AZ olursa modulo ile tekrar eder ve yığılmış
+# sütunda iki farklı branş aynı renge düşer — grafik okunamaz hâle gelir.
+# Liste CATEGORIES'ten uzun tutulmalı; birbirinden ayırt edilebilir 12 ton.
+CAT_COLORS = ["#1a3c5e", "#0891b2", "#15803d", "#65a30d", "#d97706", "#c2410c",
+              "#be123c", "#a21caf", "#7c3aed", "#4338ca", "#0f766e", "#78716c",
+              "#0369a1", "#ca8a04", "#db2777", "#4d7c0f"]
+
+# A4 - 2×14 mm kenar boşluğu. Tablo genişlikleri bunu AŞMAMALI, yoksa son
+# sütun sayfa dışında kalır.
+KULLANILABILIR_MM = 182.0
+
+
+def _kisa_model_ad(ad):
+    """Grafik ekseni için model adını kısalt: sağlayıcı öneki + kuantizasyon eki at.
+
+    'google_gemma-4-26B-A4B-it-Q5_K_M' -> 'gemma-4-26B-A4B-it'
+    Uzun adlar 90° döndürülünce grafiğin altında 130 pt yer kaplıyordu.
+    """
+    ad = re.sub(r"^(google_|Qwen_|unsloth_|bartowski_)", "", str(ad))
+    ad = re.sub(r"[-_.]?(UD[-_.]?)?(I?Q\d(_\d)?[-_.]?[KMS]?([-_.]?[A-Z]+)?)$", "", ad)
+    return ad.strip("-_. ") or str(ad)
 
 
 def graded_categories():
@@ -278,10 +304,10 @@ def graded_categories():
 def build_perf_chart(records):
     """Modellerin otomatik skorunu, puanlanan TÜM kategorilere göre yığılmış sütun grafiği çizer
     (kategori sayısı/branş eklense de kendini günceller). reportlab.graphics ile."""
-    from reportlab.graphics.shapes import Drawing, String
+    from reportlab.graphics.shapes import Drawing, String, Rect
     from reportlab.graphics.charts.barcharts import VerticalBarChart
-    from reportlab.graphics.charts.legends import Legend
     from reportlab.lib import colors
+    from reportlab.pdfbase.pdfmetrics import stringWidth
 
     gcats, gc = graded_categories()
     maxscore = sum(gc[c] for c in gcats)
@@ -293,16 +319,47 @@ def build_perf_chart(records):
     ok = sorted([r for r in records if r["ok"]], key=total_score, reverse=True)
     if not ok:
         return None
-    names = [re.sub(r"^(google_|Qwen_)", "", r["name"]) for r in ok]
+    # Sessizce bozulmasın: renk/etiket eksikse grafik okunamaz hâle gelir.
+    if len(gcats) > len(CAT_COLORS):
+        print(f"   [uyarı] {len(gcats)} branş var, CAT_COLORS'ta {len(CAT_COLORS)} renk — "
+              "renkler tekrar edecek, listeye yeni ton ekleyin")
+    _kisasiz = [c for c in gcats if c not in SHORT_CAT]
+    if _kisasiz:
+        print(f"   [uyarı] SHORT_CAT'te kısa adı olmayan branş: {', '.join(_kisasiz)} — "
+              "tablo başlığı daralacak")
+    names = [_kisa_model_ad(r["name"]) for r in ok]
     cs_all = [category_summary(r["results"]) for r in ok]
     series = [[cs[c]["passed"] for cs in cs_all] for c in gcats]   # her kategori bir seri
     totals = [sum(cs[c]["passed"] for c in gcats) for cs in cs_all]
 
-    width, height = 524, 300
+    # ---- YERLEŞİM ÖNCE HESAPLANIR ----------------------------------------
+    # Sabit yükseklikte çizim alanı, branş sayısı arttıkça taşıyordu: gösterge
+    # (legend) tek satıra sığmayıp sayfa dışına çıkıyor, döndürülmüş model
+    # adları da çizim alanının altından taşıyordu. Artık üç blok da ölçülür.
+    width = 524
+    etiketler = [f"{SHORT_CAT.get(c, c)} /{gc[c]}" for c in gcats]
+    KUTU, ARA, YAZI_ARA, LEG_PT = 7, 14, 3, 7.5
+    oge_w = [KUTU + YAZI_ARA + stringWidth(e, "DejaVu", LEG_PT) for e in etiketler]
+
+    satirlar, cur, cur_w = [], [], 0.0            # göstergeyi satırlara böl
+    for i, w_ in enumerate(oge_w):
+        if cur and cur_w + ARA + w_ > width - 8:
+            satirlar.append(cur); cur, cur_w = [], 0.0
+        cur_w += (ARA if cur else 0) + w_
+        cur.append(i)
+    if cur:
+        satirlar.append(cur)
+
+    leg_h = len(satirlar) * 12 + 6
+    # 90° döndürülmüş model adlarının kapladığı DİKEY yer = metnin genişliği.
+    etiket_h = max(stringWidth(n, "DejaVu", 6.5) for n in names) + 10
+    govde_h = 160
+    height = leg_h + govde_h + etiket_h + 14
+
     d = Drawing(width, height)
     bc = VerticalBarChart()
-    bc.x, bc.y = 28, 95
-    bc.width, bc.height = width - 56, 160
+    bc.x, bc.y = 28, etiket_h
+    bc.width, bc.height = width - 56, govde_h
     bc.data = series
     bc.categoryAxis.style = "stacked"
     bc.valueAxis.valueMin = 0
@@ -327,18 +384,21 @@ def build_perf_chart(records):
         d.add(String(x, y, str(tot), fontName="DejaVu", fontSize=7,
                      fillColor=colors.HexColor("#333333"), textAnchor="middle"))
 
-    leg = Legend()
-    leg.x, leg.y = 28, 288
-    leg.boxAnchor = "nw"
-    leg.fontName = "DejaVu"
-    leg.fontSize = 8
-    leg.dx = leg.dy = 7
-    leg.dxTextSpace = 4
-    leg.columnMaximum = 1
-    leg.deltax = 70
-    leg.colorNamePairs = [(colors.HexColor(CAT_COLORS[i % len(CAT_COLORS)]),
-                           f"{SHORT_CAT.get(c, c)} /{gc[c]}") for i, c in enumerate(gcats)]
-    d.add(leg)
+    # ---- GÖSTERGE: sütunların hemen ÜSTÜNDE, gerektiği kadar satırda --------
+    # reportlab'in Legend'ı sabit deltax ile tek satıra diziyordu; 11 branşta
+    # 770 pt yer isteyip 524 pt'lik alanın dışına taşıyordu. Elle diziyoruz ki
+    # renkler hem sığsın hem de ait oldukları sütunlara yakın dursun.
+    y = height - 11
+    for satir in satirlar:
+        x = 4.0
+        for i in satir:
+            d.add(Rect(x, y - 1, KUTU, KUTU,
+                       fillColor=colors.HexColor(CAT_COLORS[i % len(CAT_COLORS)]),
+                       strokeColor=None))
+            d.add(String(x + KUTU + YAZI_ARA, y, etiketler[i], fontName="DejaVu",
+                         fontSize=LEG_PT, fillColor=colors.HexColor("#333333")))
+            x += oge_w[i] + ARA
+        y -= 12
     return d
 
 
@@ -354,6 +414,44 @@ def build_combined_pdf(out_path, records, run_meta):
 
     def NM(x):
         return Paragraph(html.escape(str(x)), namep)
+
+    # Düz metin hücreler SARMAZ: sütuna sığmayan başlık komşusunun üstüne
+    # taşıyor ve iki yazı iç içe geçiyordu ("Halüsinasy|Türkçe"). Paragraph
+    # sarar; wordWrap="CJK" boşluksuz uzun kelimeyi de böler.
+    def _hp(size, cjk):
+        # Boşluklu başlıkta CJK kullanılmaz: karakter karakter sardığı için
+        # "Bağlam yetersiz" -> "Bağlam yetersi / z" gibi bölünüyor. Boşluksuz
+        # tek kelimede ise sarmanın TEK yolu CJK'dır (yoksa taşar).
+        return ParagraphStyle(f"th{size}{int(cjk)}", fontName=fb, fontSize=size,
+                              leading=size + 1.4, alignment=1,
+                              wordWrap=("CJK" if cjk else None),
+                              textColor=colors.white)
+
+    def TH(x, size=7):
+        """Tablo başlığı hücresi — taşmak yerine satır kaydırır."""
+        x = str(x)
+        return Paragraph(html.escape(x), _hp(size, " " not in x.strip()))
+
+    def _sigan_punto(etiketler, sutun_mm, azami=7.0, asgari=4.8):
+        """Başlıkların sütuna sığdığı en büyük puntoyu bul.
+
+        Branş sayısı arttıkça sütun daralıyor; sabit punto ile başlıklar
+        sarmak zorunda kalıp tabloyu yükseltiyor ya da (sarmıyorsa) taşıyor.
+        Yeni branş eklendiğinde punto kendiliğinden küçülsün diye ölçülüyor.
+        """
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        kullan = sutun_mm * mm - 5              # sol+sağ dolgu payı
+        pt = azami
+        while pt > asgari and max(stringWidth(str(e), fb, pt) for e in etiketler) > kullan:
+            pt -= 0.25
+        return pt
+
+    def CELL(x, size=6.5, align=0):
+        """Uzun metin içeren gövde hücresi (ör. örnekleme profili)."""
+        return Paragraph(html.escape(str(x)),
+                         ParagraphStyle(f"td{size}{align}", fontName=f, fontSize=size,
+                                        leading=size + 1.6, alignment=align,
+                                        wordWrap="CJK"))
 
     def cat_score(rec, cat):
         cs = category_summary(rec["results"])[cat]
@@ -375,8 +473,8 @@ def build_combined_pdf(out_path, records, run_meta):
     el.append(Paragraph("1) Skor Karşılaştırması", S["H2"]))
     # Hücreler AĞIRLIKLI puan gösterir (kısmi puan × kademe ağırlığı), çünkü
     # "kaç soru tam geçti" sayısı kısmi puanı ve zorluk farkını yok sayıyordu.
-    rows = [["Model", "Ağırlıklı puan", "%", "Tam geçen", "Kararlılık",
-             "Σ süre (s)", "ort tok/s", "ctx"]]
+    rows = [[TH("Model"), TH("Ağırlıklı puan"), TH("%"), TH("Tam geçen"),
+             TH("Kararlılık"), TH("Σ süre (s)"), TH("ort tok/s"), TH("ctx")]]
 
     def sort_key(r):
         if not r["ok"]:
@@ -402,15 +500,15 @@ def build_combined_pdf(out_path, records, run_meta):
                      (f"{sum(krr)/len(krr):.2f}" if krr else "—"),
                      f"{tot:.0f}", f"{tps:.1f}",
                      f"{(rec.get('ctx') or 0)//1024}k"])
-    colW = [52*mm, 26*mm, 12*mm, 20*mm, 20*mm, 20*mm, 18*mm, 14*mm]
+    colW = [54*mm, 24*mm, 11*mm, 19*mm, 19*mm, 20*mm, 19*mm, 16*mm]   # Σ = 182 mm
     t = Table(rows, colWidths=colW)
     t.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), f), ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("FONTNAME", (0, 0), (-1, 0), fb),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a3c5e")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
         ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f6f8fa")])]))
     el.append(t)
     el.append(Paragraph(
@@ -430,7 +528,10 @@ def build_combined_pdf(out_path, records, run_meta):
     # ---- TABLO 2: süreler ----
     # ---- TABLO 1a: kategori kırılımı (12 branş tek tabloya sığmadığı için ayrıldı) ----
     el.append(Paragraph("1a) Branş Bazında Ağırlıklı Puan", S["H2"]))
-    krows = [["Model"] + [SHORT_CAT.get(c, c) for c in gcats]]
+    _kad = 34.0                                    # model sütunu (mm)
+    _kw = (KULLANILABILIR_MM - _kad) / max(1, len(gcats))
+    _kpt = _sigan_punto([SHORT_CAT.get(c, c) for c in gcats], _kw)
+    krows = [[TH("Model", _kpt)] + [TH(SHORT_CAT.get(c, c), _kpt) for c in gcats]]
     for rec in sorted(records, key=sort_key):
         if not rec["ok"]:
             continue
@@ -439,12 +540,12 @@ def build_combined_pdf(out_path, records, run_meta):
                      + [("—" if not cs[c]["graded"]
                          else f"{cs[c]['agirlikli_puan']:.0f}/{cs[c]['azami_agirlik']}")
                         for c in gcats])
-    kt = Table(krows, colWidths=[38*mm] + [(140.0 / max(1, len(gcats)))*mm] * len(gcats))
+    kt = Table(krows, colWidths=[_kad*mm] + [_kw*mm] * len(gcats))
     kt.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a3c5e")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, -1), f), ("FONTNAME", (0, 0), (-1, 0), fb),
+        ("FONTNAME", (0, 0), (-1, -1), f),
         ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+        ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#9aa5b1")),
         ("ALIGN", (1, 1), (-1, -1), "CENTER"),
         ("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2)]))
@@ -456,7 +557,8 @@ def build_combined_pdf(out_path, records, run_meta):
     # Modeller artık aynı koşullarda koşmuyor (her biri kendi kartının ayarıyla);
     # bu tablo olmadan karşılaştırma yorumlanamaz.
     el.append(Paragraph("1b) Model Parametreleri", S["H2"]))
-    prow = [["Model", "Profil / örnekleme", "ctx", "En zor çözülen", "Kesilen", "Bağlam yetersiz"]]
+    prow = [[TH("Model", 6.5), TH("Profil / örnekleme", 6.5), TH("ctx", 6.5),
+             TH("En zor çözülen", 6.5), TH("Kesilen", 6.5), TH("Bağlam yetersiz", 6.5)]]
     for rec in records:
         if not rec["ok"]:
             continue
@@ -466,17 +568,19 @@ def build_combined_pdf(out_path, records, run_meta):
         enzor = max(kademeler, key=sira.index) if kademeler else "—"
         yetersiz = sum(1 for x in rec["results"] if x.get("baglam_yetersiz"))
         prow.append([NM(rec["name"]),
-                     PROFIL.ozet(rec.get("profil") or {}),
+                     # Profil metni uzun ("… top_p=0.95 top_k=20 rep=1.0"); düz
+                     # metin olarak ctx sütununun üstüne biniyordu -> sarmalı.
+                     CELL(PROFIL.ozet(rec.get("profil") or {})),
                      f"{(rec.get('ctx') or 0)//1024}k",
                      enzor,
                      str(sum(1 for x in rec["results"] if x.get("kesildi"))),
                      str(yetersiz)])
-    pt = Table(prow, colWidths=[36*mm, 74*mm, 12*mm, 22*mm, 15*mm, 22*mm])
+    pt = Table(prow, colWidths=[38*mm, 72*mm, 13*mm, 22*mm, 15*mm, 22*mm])   # Σ = 182 mm
     pt.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a3c5e")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, -1), f), ("FONTNAME", (0, 0), (-1, 0), fb),
+        ("FONTNAME", (0, 0), (-1, -1), f),
         ("FONTSIZE", (0, 0), (-1, -1), 6.5),
+        ("ALIGN", (2, 1), (-1, -1), "CENTER"),
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#9aa5b1")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3)]))
@@ -490,20 +594,22 @@ def build_combined_pdf(out_path, records, run_meta):
     el.append(Spacer(1, 6))
 
     el.append(Paragraph("2) Kategori Bazında Toplam Süre (s)", S["H2"]))
-    rows2 = [["Model"] + [SHORT_CAT.get(c, c) for c in CATEGORIES]]
+    _mw = 38.0
+    _pw = (KULLANILABILIR_MM - _mw) / max(1, len(CATEGORIES))
+    _ppt = _sigan_punto([SHORT_CAT.get(c, c) for c in CATEGORIES], _pw)
+    rows2 = [[TH("Model", _ppt)] + [TH(SHORT_CAT.get(c, c), _ppt) for c in CATEGORIES]]
     for rec in records:
         if not rec["ok"]:
             continue
         rows2.append([NM(rec["name"])] + [f"{category_summary(rec['results'])[c]['time']:.0f}" for c in CATEGORIES])
-    _pw = (170 - 44) / max(1, len(CATEGORIES))
-    t2 = Table(rows2, colWidths=[44*mm] + [_pw*mm] * len(CATEGORIES))
+    t2 = Table(rows2, colWidths=[_mw*mm] + [_pw*mm] * len(CATEGORIES))
     t2.setStyle(TableStyle([
-        ("FONTNAME", (0, 0), (-1, -1), f), ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("FONTNAME", (0, 0), (-1, 0), fb),
+        ("FONTNAME", (0, 0), (-1, -1), f), ("FONTSIZE", (0, 0), (-1, -1), 7),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a3c5e")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
         ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2), ("RIGHTPADDING", (0, 0), (-1, -1), 2),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f6f8fa")])]))
     el.append(t2)
     el.append(Paragraph("<b>Sütunlar:</b> Her hücre, o kategorideki tüm soruların TOPLAM yanıt "
@@ -541,7 +647,8 @@ def build_combined_pdf(out_path, records, run_meta):
         el.append(Spacer(1, 6))
 
     el.append(Paragraph("3) Kaynak Kullanımı", S["H2"]))
-    rows3 = [["Model", "Ort. token/s", "Toplam token", "Σ süre (s)", "Tepe VRAM (GB)", "GPU ort/tepe %"]]
+    rows3 = [[TH("Model"), TH("Ort. token/s"), TH("Toplam token"), TH("Σ süre (s)"),
+              TH("Tepe VRAM (GB)"), TH("GPU ort/tepe %")]]
     for rec in records:
         if not rec["ok"]:
             continue
@@ -551,14 +658,13 @@ def build_combined_pdf(out_path, records, run_meta):
         uavg, umax = gpu_util_stats(rec["gpu_summary"])
         rows3.append([NM(rec["name"]), f"{atps:.1f}", f"{ttok}", f"{ttime:.0f}",
                       f"{rec['vram_peak_delta']/1024:.1f}", f"{uavg:.0f}/{umax:.0f}"])
-    t3 = Table(rows3, colWidths=[54*mm, 22*mm, 24*mm, 20*mm, 26*mm, 24*mm])
+    t3 = Table(rows3, colWidths=[58*mm, 22*mm, 24*mm, 20*mm, 24*mm, 24*mm])   # Σ = 172 mm
     t3.setStyle(TableStyle([
         ("FONTNAME", (0, 0), (-1, -1), f), ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("FONTNAME", (0, 0), (-1, 0), fb),
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a3c5e")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cccccc")),
         ("ALIGN", (1, 1), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, 0), "MIDDLE"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f6f8fa")])]))
     el.append(t3)
     el.append(Paragraph(
