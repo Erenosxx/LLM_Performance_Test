@@ -7,8 +7,49 @@ mmproj-*.gguf (projektör), *-adapter.gguf (LoRA) ve safetensors klasörleri
 KASITLI olarak listede yoktur — bunlar tek başına çalıştırılabilir model değildir.
 """
 
-MODELS_DIR = "/mnt/data/LLM/models"
-LLAMA_SERVER = "/home/han/Desktop/llama.cpp-new/build/bin/llama-server"
+# --- YOLLAR: makineye göre değişir, DEPOYA GÖMÜLMEZ ------------------------
+# Öncelik sırası:  ortam değişkeni  >  ayarlar_yerel.py  >  aşağıdaki varsayılan
+#
+# Kurulum (iki yoldan biri):
+#   1) cp ayarlar_yerel.ornek.py ayarlar_yerel.py   ve içindeki iki yolu düzenle
+#   2) export LLM_MODELS_DIR=/veri/modeller LLAMA_SERVER=~/llama.cpp/build/bin/llama-server
+#
+# ayarlar_yerel.py .gitignore'dadır: kimsenin klasör yapısı depoya sızmaz.
+import os
+
+try:
+    import ayarlar_yerel as _yerel               # kullanıcıya özel, izlenmiyor
+except ImportError:
+    _yerel = None
+
+
+def _cozumle(anahtar, varsayilan):
+    deger = os.environ.get(anahtar) or getattr(_yerel, anahtar, None) or varsayilan
+    return os.path.abspath(os.path.expanduser(str(deger)))
+
+
+MODELS_DIR = _cozumle("LLM_MODELS_DIR", "~/llm-models")
+LLAMA_SERVER = _cozumle("LLAMA_SERVER", "~/llama.cpp/build/bin/llama-server")
+
+
+def dogrula():
+    """Yolları kontrol et; eksikse NE YAPILACAĞINI söyleyen hata döndür (yoksa None).
+
+    Sessiz başarısızlık yerine açık mesaj: yeni kullanıcının ilk çalıştırmada
+    takılacağı tek yer burasıdır.
+    """
+    eksik = []
+    if not os.path.isdir(MODELS_DIR):
+        eksik.append(f"  Model klasörü bulunamadı : {MODELS_DIR}\n"
+                     f"    -> LLM_MODELS_DIR ile göster (veya ayarlar_yerel.py)")
+    if not (os.path.isfile(LLAMA_SERVER) and os.access(LLAMA_SERVER, os.X_OK)):
+        eksik.append(f"  llama-server bulunamadı  : {LLAMA_SERVER}\n"
+                     f"    -> LLAMA_SERVER ile göster (veya ayarlar_yerel.py)")
+    if not eksik:
+        return None
+    return ("Yapılandırma eksik:\n" + "\n".join(eksik)
+            + "\n\n  cp ayarlar_yerel.ornek.py ayarlar_yerel.py   ve iki yolu düzenle.")
+
 
 PORT = 8080
 HOST = "127.0.0.1"

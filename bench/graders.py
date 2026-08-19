@@ -270,6 +270,9 @@ def _yol_oku(nesne, yol):
     return gecerli
 
 
+_JSONSCHEMA_UYARISI = False
+
+
 def grade_json(cevap, sema, beklenen_alanlar):
     """Üç aşamalı kısmi puan:
         0,30  geçerli JSON üretildi
@@ -289,6 +292,13 @@ def grade_json(cevap, sema, beklenen_alanlar):
         import jsonschema
         jsonschema.validate(nesne, sema)
     except ImportError:
+        # Sessiz kalmaz: bu durumda şema puanı KOŞULSUZ veriliyor, yani JSON
+        # branşı modelleri ayırt etmiyor. Kurulum: pip install jsonschema
+        global _JSONSCHEMA_UYARISI
+        if not _JSONSCHEMA_UYARISI:
+            _JSONSCHEMA_UYARISI = True
+            print("   [uyarı] jsonschema kurulu değil -> JSON branşında şema aşaması "
+                  "atlanıyor ve 0,40 puan koşulsuz veriliyor (pip install jsonschema)")
         sema_notu = "jsonschema kurulu değil — aşama atlandı (puan verildi)"
     except Exception as e:
         sema_ok = False

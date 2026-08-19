@@ -876,6 +876,12 @@ def main():
         run_combined_selftest(args)
         return
 
+    # Yollar makineye göre değişir; eksikse NE yapılacağını söyleyip dur.
+    # (selftest sunucu/model istemediği için ondan SONRA denetlenir.)
+    _hata = CFG.dogrula()
+    if _hata:
+        sys.exit(_hata)
+
     try:
         requests.get(BASE_URL + "/health", timeout=2)
         sys.exit(f"HATA: {BASE_URL} meşgul. Açık llama-server'ı kapat (betik modelleri kendi açar).")

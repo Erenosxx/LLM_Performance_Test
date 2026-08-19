@@ -22,6 +22,7 @@ arasına insan kararı girsin).
 """
 
 import argparse
+import sys
 import json
 import os
 import re
@@ -125,6 +126,10 @@ def main():
                     help="KV kuantizasyonu (varsayılan: f16)")
     ap.add_argument("--merdiven", default=None, help="virgülle ayrık context adayları")
     args = ap.parse_args()
+
+    _hata = CFG.dogrula()          # yollar makineye göre değişir; eksikse açık mesaj
+    if _hata:
+        sys.exit(_hata)
 
     merdiven = ([int(x) for x in args.merdiven.split(",")] if args.merdiven else MERDIVEN)
     os.makedirs(os.path.join(BASE_DIR, "logs"), exist_ok=True)
