@@ -1,5 +1,7 @@
 # LLM Performance Test
 
+**Türkçe** · [English](README.en.md)
+
 Lokal LLM'leri (llama-server / OpenAI-uyumlu `/v1` endpoint) sabit bir soru setiyle
 test eder, yanıt sürelerini ve GPU kullanımını ölçer, kod/SQL/matematik cevaplarını
 **otomatik puanlar** ve PDF rapor üretir.
@@ -43,17 +45,44 @@ python -m pytest bench/ -q                 # grader birim testleri
 > derlenip yolu gösterilir. Model `.gguf` dosyaları da ayrıca indirilir.
 
 ## Soru seti (her model için SABİT)
-| Kategori | Soru sayısı | Otomatik puanlama |
-|----------|-------------|-------------------|
-| Yaratıcılık | 1 | Hayır — insan değerlendirmesi (kriterler PDF'te) |
-| Kod / algoritma | 8 yazma + 3 okuma (çıktı tahmini) | Evet — fonksiyon çalıştırılıp test edilir / çıktı sayısı kıyas |
-| SQL | 8 (kolay→çok zor) | Evet — SQLite'ta referans sorgu ile kıyas |
-| Matematik | 8 (kolay→çok zor) | Evet — bilinen sonuçla kıyas |
-| **Hata Ayıklama** (branş) | 9 (kolay→çok sinsi) | Evet — BOZUK kod verilir, düzeltilmiş kod çalıştırılıp test edilir |
-| **Agentic** (branş) | 6 (3 orta + 3 çok zor) | Evet — çok-turlu ARAÇ kullanımı; model veriyi toplayıp doğru çıkarımı yapmalı |
-| **Medikal** (branş) | 8 | Evet — cerrahi aşama/ekipman; gerekli tıbbi terim(ler) eş anlamlılarıyla aranır |
 
-> **Tekrarlanabilirlik:** Varsayılan `temperature=0` (greedy) + `repeat_penalty=1.1` → aynı model aynı soruda HEP aynı cevabı verir (adil/deterministik kıyas). Eskiden temp 0.3 olduğundan skorlar tur-tur değişiyordu.
+**12 branş, 139 soru — 133'ü otomatik puanlanır.**
+
+| Branş | Soru | Puanlı | Nasıl puanlanır |
+|---|---|---|---|
+| Yaratıcılık | 6 | 0 | Hayır — insan değerlendirmesi (kriterler PDF'te) |
+| Kod / algoritma | 16 | 16 | Fonksiyon çalıştırılıp sabit girdi/çıktıyla test edilir |
+| SQL | 13 | 13 | SQLite'ta referans sorgu ile satır bazında kıyas |
+| Matematik | 13 | 13 | `#### <sayı>` cevabı bilinen sonuçla kıyaslanır |
+| Hata Ayıklama | 14 | 14 | BOZUK kod verilir; düzeltilmiş kod çalıştırılıp test edilir |
+| Agentic | 14 | 14 | Çok-turlu ARAÇ kullanımı; model veriyi toplayıp çıkarım yapmalı |
+| Medikal | 13 | 13 | Gerekli tıbbi terim(ler) eş anlamlılarıyla aranır |
+| Talimat | 13 | 13 | Her kısıt makineyle denetlenir (madde sayısı, yasak sözcük, sıralama…) |
+| JSON | 11 | 11 | Geçerli JSON (0,30) + şema uyumu (0,40) + alan değerleri (0,30) |
+| Halüsinasyon | 10 | 10 | Cevaplanamaz soruda bilmediğini söylemeli; yanlış öncülü reddetmeli |
+| Türkçe | 10 | 10 | Tıbbi terim yetkinliği: bozuk terimi düzelt, meşru olana DOKUNMA |
+| Uzun Bağlam | 6 | 6 | Üretilen uzun belgede iğne / çelişki / sentez görevleri |
+
+Üç branşın ayrıntısı:
+- **Halüsinasyon** — (a) *cevaplanamaz*: var olmayan çalışma/protokol hakkında
+  spesifik veri istenir, doğru davranış bilmediğini söylemek; (b) *yanlış öncül*:
+  soru gerçek olmayan bir olayı olmuş gibi sunar, doğru davranış öncülü reddetmek.
+- **Türkçe** — sorular uydurulmadı, TÜBİTAK WP6 değerlendirmesindeki **gerçek Whisper
+  ASR bozulmalarından** türetildi. (a) *düzeltme*: gerçekten bozuk terim
+  ("intertorakal" diye bir terim yok); (b) *dokunmama*: her iki biçim de meşru
+  ("miyokart") ya da konuşma dilinin sadık dökümü ("nerden") — model dokunmamalı.
+- **Uzun Bağlam** — belgeler programatik üretilir (dış veri yok, tohum sabit, her
+  koşuda birebir aynı). *iğne*: tek olgu belgenin %10/%50/%90 derinliğine gömülür;
+  *çelişki*: aynı olgu iki yerde farklı verilir, model yakalamalı; *sentez*: cevap üç
+  ayrı bölümdeki olgunun birleştirilmesini gerektirir.
+
+**Ağırlıklı puanlama:** her sorunun bir kademesi var — kolay ×1, orta ×2, zor ×3,
+acımasız ×4. Rapordaki "ağırlıklı puan" = Σ (kısmi puan × kademe ağırlığı).
+Böylece bir acımasız soruyu çözmek dört kolay soruya bedel olur.
+
+> **JSON branşı için not:** `jsonschema` kurulu değilse şema aşaması atlanır ve o
+> 0,40 puan koşulsuz verilir (koşuda uyarı basılır). `pip install -r requirements.txt`
+> bunu kurar.
 
 **Yarışma seviyesi** (LeetCode/AIME/Spider2.0 esinli — güçlü modelleri ayırt etmek için), her kategori 8 soru, kolay→çok zor:
 - Kod: roman_sayi → editleme_mesafesi (Levenshtein) → kelime_bol (word break) → n_vezir (N-Queens) → en_uzun_artan_yol → **regex_eslesme (DP)** → **histogram_max_alan (stack)** → **kelime_merdiveni (BFS, word ladder)** — son 3'ü LeetCode **Hard**
@@ -135,8 +164,10 @@ Tek-model tester (`llm_perf_test.py`) de aynı yapıyı kullanır
 - `launch/open_<model>.sh` — her modeli **manuel** açmak için de kullanabilirsin.
 
 **Birleşik PDF içeriği:**
-- Üst kısım: skor karşılaştırması (Kod/5, SQL/5, Mat/5, Oto/15, süreler, tok/s, VRAM) +
-  **genel performans sütun grafiği** (otomatik skor /15, yüksekten düşüğe, kategori kırılımlı) + süre tablosu
+- Üst kısım: skor karşılaştırması (ağırlıklı puan, %, tam geçen, kararlılık, süre,
+  tok/s, ölçülmüş ctx) + branş bazında ağırlıklı puan + her modelin koştuğu
+  parametreler + **genel performans sütun grafiği** (branş kırılımlı) + süre tablosu
+- **Madde analizi:** hangi soru modelleri gerçekten ayırıyor, hangisi hiç ayrım üretmiyor
 - "Sorular" bölümü: her soru + doğru cevabı (referans çözüm / beklenen sonuç)
 - Alt kısım: her model ayrı sayfada, her soruya verdiği cevap kategori kategori, alt alta
 
@@ -150,11 +181,36 @@ Her kod sorusu için PDF'te bir tablo bulunur: **Çağrı | Beklenen çıktı | 
 SQL sorularında **beklenen sonuç** ve **modelin sorgu çıktısı** yan yana verilir.
 Kod sorularında modellere "açıklama/yorum yazma, sadece kodu ver" talimatı verilir.
 
-## Parametreler (ortak)
+## Örnekleme parametreleri — iki rejim
+
+**a) Profil rejimi (varsayılan).** Her model KENDİ model kartının önerdiği ayarla
+koşar. Değerler tahmin değil, modelin `generation_config.json` dosyasından alındı
+(`bench/profiles.py`):
+
+| Model deseni | temp | top_p | top_k | rep | ek |
+|---|---|---|---|---|---|
+| `qwen3.8` | 1.0 | 0.95 | 20 | 1.0 | `reasoning_effort=medium` |
+| `qwen3.5`–`3.7` | 0.6 | 0.95 | 20 | 1.0 | — |
+| `gemma-4`, `gemma-3` | 1.0 | 0.95 | 64 | 1.0 | — |
+| eşleşme yok | 0.0 | 1.0 | — | 1.1 | — |
+
+Kural sırası önemlidir: ilk eşleşen kazanır, bu yüzden `qwen3.8` kuralı
+`qwen3.[567]`'den önce gelir. Yeni model için bu listeye desen eklemek yeterli.
+
+Bu rejimde sonuç "aynı koşulda hangisi iyi" değil, **"her biri en iyi hâliyle ne
+yapabiliyor"** sorusunu yanıtlar. Raporun 1b tablosu her modelin parametresini yazar.
+
+**b) `--deterministik`.** Profilleri yok sayar, hepsini `temperature=0` ile koşar —
+karşılaştırılabilir taban isteyenler için.
+
+> `run_models.py`'nin `--temperature` / `--repeat-penalty` bayrakları profil rejiminde
+> ETKİSİZDİR: istek gövdesi önce bu değerlerle kurulur, hemen ardından profilin
+> değerleriyle üzerine yazılır. Sıcaklığı gerçekten değiştirmek için ya
+> `bench/profiles.py`'yi düzenle ya da `--deterministik` kullan.
+
+### Diğer parametreler
 | Argüman | Varsayılan | Açıklama |
 |---------|-----------|----------|
-| `--temperature` | `0.0` | Greedy — aynı model aynı soruda hep aynı cevabı verir |
-| `--repeat-penalty` | `1.1` | Model kartı önerisi (tekrar bozulmasını önler) |
 | `--max-tokens` | `0` (otomatik) | 0 = bağlamın izin verdiği en yüksek değer (`n_ctx - 2048`) |
 | `--tekrar K` | `1` | Her puanlı soru K kez sorulur, puan ortalanır (avg@K) |
 | `--no-think` | kapalı | Düşünmeyi (reasoning) kapat (`enable_thinking=false`) |
@@ -165,11 +221,13 @@ Kod sorularında modellere "açıklama/yorum yazma, sadece kodu ver" talimatı v
 Qwen3 gibi modeller önce `reasoning_content` üretir, sonra nihai cevaba (`content`) geçer.
 `max_tokens` düşükse model **düşünürken** limite takılır (`finish_reason=length`) ve nihai
 cevabı hiç yazamaz → rapor boş görünür. Çözümler:
-- `max_tokens` yüksek tutuldu (4096) — çoğu model düşünüp cevaplayabilsin diye.
+- `max_tokens` varsayılan olarak OTOMATİK: `n_ctx - 2048` (32k bağlamda ~30720),
+  böylece model düşünüp cevaplayacak yeri bulur.
 - `--no-think` ile düşünmeyi kapat: model doğrudan cevap verir (daha hızlı, garanti cevap).
 - Cevap yine boşsa rapor **nedenini** yazar (token limiti / düşünme aşaması) ve elde varsa
   düşünme içeriğinin bir kısmını gösterir — artık sessizce boş kalmaz.
 
 ## Not
-Süre/UTF-8 kodlaması ve grader'lar gerçek modelle uçtan uca doğrulandı.
-Tam tur (tüm modeller × 16 soru) modellerin boyutuna göre uzun sürebilir.
+Süre/UTF-8 kodlaması ve grader'lar gerçek modelle uçtan uca doğrulandı
+(`python -m pytest bench/ -q`). Tam tur (tüm modeller × 139 soru) modellerin
+boyutuna ve düşünme kipine göre saatler sürebilir; `--only` ile daraltılabilir.
